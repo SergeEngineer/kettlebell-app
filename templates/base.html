@@ -47,15 +47,34 @@ function initWheels(root){
         const v = Math.max(0, Math.round(w.scrollTop / IH));
         w.closest('.picker').querySelector('input[name=' + w.dataset.target + ']').value = v;
         wheelPaint(w);
+        if (Date.now() > (w._quiet || 0)) {            // user scrolled: auto-save shortly after they stop
+          clearTimeout(w._t);
+          w._t = setTimeout(() => { const f = w.closest('form'); if (f) f.dispatchEvent(new Event('wheeldone')); }, 600);
+        }
       }, {passive: true});
       w.addEventListener('click', e => {
         const it = e.target.closest('.it'); if (!it) return;
         w.scrollTo({top: [...w.querySelectorAll('.it')].indexOf(it) * IH, behavior: 'smooth'});
       });
     }
+    w._quiet = Date.now() + 500;
     w.scrollTop = (+w.dataset.val) * IH;
     wheelPaint(w);
   });
+}
+const fmtTime = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+function toggleStep(row, ev){
+  if (ev.target.closest('button')) return;
+  const f = row.closest('li').querySelector('.edit'), open = f.hidden;
+  document.querySelectorAll('#steps .edit').forEach(x => x.hidden = true);
+  f.hidden = !open;
+  if (open) initWheels(f);
+}
+function stepSaved(f){
+  const li = f.closest('li'), s = (+f.elements.min.value) * 60 + (+f.elements.sec.value);
+  li.dataset.seconds = s; li.querySelector('.tm').textContent = fmtTime(s);
+  let sum = 0; document.querySelectorAll('#steps li[data-seconds]').forEach(x => sum += +x.dataset.seconds);
+  const t = document.getElementById('tot'); if (t) t.textContent = 'Total ' + fmtTime(sum);
 }
 document.addEventListener('DOMContentLoaded', () => initWheels(document));
 document.addEventListener('htmx:load', e => initWheels(e.detail.elt));

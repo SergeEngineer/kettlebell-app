@@ -45,7 +45,9 @@
 function ui(f){
   const w = f.kind.value === 'workout';
   f.querySelector('.wk').hidden = !w;
-  f.querySelector('.nw').hidden = !(w && f.exercise.value === 'new');
+  const n = w && f.exercise.value === 'new';
+  f.querySelector('.nw').hidden = !n;
+  f.new_name.required = n;
 }
 const f = document.getElementById('addstep');
 f.addEventListener('change', () => ui(f));

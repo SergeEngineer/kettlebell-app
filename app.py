@@ -163,12 +163,11 @@ def rename_program(pid):
 
 @app.post("/steps/<int:sid>")
 def edit_step(sid):
-    row = db().execute("select program_id, seconds from steps where id=?", (sid,)).fetchone() or abort(404)
-    label = request.form.get("label", "").strip() or None
     secs = int(request.form.get("min") or 0) * 60 + int(request.form.get("sec") or 0)
-    db().execute("update steps set label=?, seconds=? where id=?", (label, secs if secs > 0 else row["seconds"], sid))
-    db().commit()
-    return steps_partial(row["program_id"])
+    if secs > 0:
+        db().execute("update steps set seconds=? where id=?", (secs, sid))
+        db().commit()
+    return "", 204
 
 
 # ---------- exercises ----------
@@ -230,7 +229,7 @@ def manifest():
 @app.get("/run/<int:pid>")
 def run(pid):
     p = db().execute("select * from programs where id=?", (pid,)).fetchone() or abort(404)
-    steps = [{"name": s["label"] or s["name"] or "Rest", "seconds": s["seconds"],
+    steps = [{"name": s["name"] or "Rest", "seconds": s["seconds"],
               "gif": f"/media/{s['gif']}" if s["gif"] else None,
               "kind": "ex" if s["exercise_id"] else "rest"} for s in get_steps(pid)]
     return render_template("run.html", p=p, steps=steps)

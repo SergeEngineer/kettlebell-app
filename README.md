@@ -12,7 +12,7 @@ A small web app for building kettlebell workouts and running them with a countdo
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
 - Reorder steps with the up and down buttons, and remove steps you don't want.
 - See the total workout time.
-- Rename a workout, and edit any step: give it a custom name (for example "Water break") and change its time with iOS-style scroll wheels. Exercises can be renamed in the Exercises tab.
+- Rename or delete a workout with the icons beside its title. Tap a step to expand it and change its time with iOS-style scroll wheels; the change saves automatically. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
 
 Example workout:
 
