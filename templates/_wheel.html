@@ -1,0 +1,10 @@
+{% macro wheel(m, s) %}
+<div class="picker">
+  <div class="band"></div>
+  <div class="wheel" data-target="min" data-val="{{ m }}"><div class="pad"></div>{% for i in range(100) %}<div class="it">{{ i }}</div>{% endfor %}<div class="pad"></div></div>
+  <span class="lbl">min</span>
+  <div class="wheel" data-target="sec" data-val="{{ s }}"><div class="pad"></div>{% for i in range(60) %}<div class="it">{{ "%02d"|format(i) }}</div>{% endfor %}<div class="pad"></div></div>
+  <span class="lbl">sec</span>
+  <input type="hidden" name="min" value="{{ m }}"><input type="hidden" name="sec" value="{{ s }}">
+</div>
+{% endmacro %}
