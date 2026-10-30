@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Exercises</h1>
+<form class="group" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" hx-on::after-request="this.reset()">
+  <div class="row"><input name="name" placeholder="Exercise name" required autocomplete="off"></div>
+  <label class="row"><span class="grow">GIF</span><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg"></label>
+  <div class="row"><button class="blue wide">Save exercise</button></div>
+</form>
+<div id="list">{{ partial|safe }}</div>
+{% endblock %}

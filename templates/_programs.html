@@ -1,0 +1,9 @@
+{% if programs %}
+<ul class="group">
+{% for p in programs %}
+  <li><a class="row" href="/programs/{{ p.id }}">
+    <span class="grow"><strong>{{ p.name }}</strong><small>{{ p.n }} steps · {{ p.total|fmt }}</small></span>
+    <i class="chev">›</i></a></li>
+{% endfor %}
+</ul>
+{% else %}<p class="empty">No workouts yet. Name one above to get started.</p>{% endif %}

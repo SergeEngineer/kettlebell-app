@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block body %}
+<a class="back" href="/">‹ Workouts</a>
+<h1>{{ p.name }}</h1>
+<a class="start" href="/run/{{ p.id }}">START</a>
+<div id="steps">{{ partial|safe }}</div>
+
+<h2>Add step</h2>
+<form class="group" hx-post="/programs/{{ p.id }}/steps" hx-target="#steps">
+  <label class="row"><span class="grow">Type</span>
+    <select name="what">
+      <option value="rest">Rest</option>
+      {% for e in exercises %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+    </select></label>
+  <label class="row"><span class="grow">Minutes</span><input class="num" type="number" name="min" min="0" max="99" value="5" inputmode="numeric"></label>
+  <label class="row"><span class="grow">Seconds</span><input class="num" type="number" name="sec" min="0" max="59" value="0" inputmode="numeric"></label>
+  <div class="row"><button class="blue wide">Add to workout</button></div>
+</form>
+{% if not exercises %}<p class="empty">No exercises saved yet. Add some in the Exercises tab.</p>{% endif %}
+
+<form method="post" action="/programs/{{ p.id }}/delete" onsubmit="return confirm('Delete this workout?')">
+  <button class="danger">Delete workout</button>
+</form>
+{% endblock %}
