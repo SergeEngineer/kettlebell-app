@@ -5,6 +5,9 @@
   <h1 id="ttl">{{ p.name }}</h1>
   <button class="icon" aria-label="Rename workout"
     onclick="document.querySelector('.titlebar').hidden=true;const f=document.getElementById('tform');f.hidden=false;f.wname.focus()">✎</button>
+  <form method="post" action="/programs/{{ p.id }}/delete" onsubmit="return confirm('Delete this workout and all its steps? This cannot be undone.')">
+    <button class="icon red" aria-label="Delete workout"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
+  </form>
 </div>
 <form id="tform" class="group" hidden hx-post="/programs/{{ p.id }}/rename" hx-swap="none"
       hx-on::after-request="const v=this.wname.value.trim(); if(v) document.getElementById('ttl').textContent=v; this.hidden=true; document.querySelector('.titlebar').hidden=false">
@@ -12,7 +15,6 @@
     <button type="button" class="dimbtn" onclick="this.closest('form').hidden=true;document.querySelector('.titlebar').hidden=false">Cancel</button>
     <button class="blue">Save</button></div>
 </form>
-<a class="start" href="/run/{{ p.id }}">START</a>
 <div id="steps">{{ partial|safe }}</div>
 
 <h2>Add step</h2>
@@ -38,9 +40,7 @@
   <div class="row"><button class="blue wide">Add to workout</button></div>
 </form>
 
-<form method="post" action="/programs/{{ p.id }}/delete" onsubmit="return confirm('Delete this workout?')">
-  <button class="danger">Delete workout</button>
-</form>
+<div class="startbar"><a class="start" href="/run/{{ p.id }}">START</a></div>
 <script>
 function ui(f){
   const w = f.kind.value === 'workout';

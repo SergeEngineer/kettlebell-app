@@ -13,7 +13,6 @@ A small web app for building kettlebell workouts and running them with a countdo
 - Reorder steps with the up and down buttons, and remove steps you don't want.
 - See the total workout time.
 - Rename a workout, and edit any step: give it a custom name (for example "Water break") and change its time with iOS-style scroll wheels. Exercises can be renamed in the Exercises tab.
-- GIF edges dissolve into the black background with a halftone dither fade.
 
 Example workout:
 

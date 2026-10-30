@@ -58,30 +58,6 @@ const ns = $('ns'); ns.muted = true;
 function keepAwake(){ ns.play().catch(()=>{});
   if(navigator.wakeLock) navigator.wakeLock.request('screen').then(l=>{ wake=l; }).catch(()=>{}); }
 function releaseAwake(){ try{ if(wake) wake.release(); }catch(e){} ns.pause(); }
-// Halftone (ordered-dither) fade on the top and bottom edges of the GIF
-const BAYER=[[0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],[12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],
-             [3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],[15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]];
-const FADE=14, CELL=2; let maskKey='';   // FADE = width of the faded edge in px (all four sides), CELL = dot size in px
-function applyFade(){
-  const pic=$('pic'), w=pic.clientWidth, h=pic.clientHeight; if(!w||!h) return;
-  const key=w+'x'+h; if(key===maskKey) return; maskKey=key;
-  const dpr=window.devicePixelRatio||1, W=Math.round(w*dpr), H=Math.round(h*dpr), cell=Math.max(1,Math.round(CELL*dpr)), fp=FADE*dpr;
-  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
-  const g=cv.getContext('2d'), img=g.createImageData(W,H), d=img.data;
-  for(let y=0;y<H;y++){
-    const cy=Math.floor(y/cell), yy=cy*cell+cell/2, ty=Math.min(yy,H-yy);
-    for(let x=0;x<W;x++){
-      const cx=Math.floor(x/cell), xx=cx*cell+cell/2, t=Math.min(1,Math.min(ty,xx,W-xx)/fp), v=t*t*(3-2*t);
-      const th=(BAYER[cy%8][cx%8]+.5)/64, i=(y*W+x)*4;
-      d[i]=d[i+1]=d[i+2]=255; d[i+3]=v>th?255:0;
-    }
-  }
-  g.putImageData(img,0,0);
-  const url='url('+cv.toDataURL('image/png')+')';
-  pic.style.webkitMaskImage=url; pic.style.maskImage=url;
-}
-$('pic').addEventListener('load',applyFade);
-if(window.ResizeObserver) new ResizeObserver(applyFade).observe($('pic'));
 $('arc').style.strokeDasharray = C;
 let i=0, end=0, remain=0, total=0, paused=true, lastSec=-1, ctx=null, wake=null;
 $('pp').innerHTML = PLAY;
