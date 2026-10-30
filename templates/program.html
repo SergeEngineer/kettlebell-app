@@ -1,9 +1,15 @@
 {% extends "base.html" %}
 {% block body %}
 <a class="back" href="/">‹ Workouts</a>
-<h1>{{ p.name }}</h1>
+<h1 id="ttl">{{ p.name }}</h1>
 <a class="start" href="/run/{{ p.id }}">START</a>
 <div id="steps">{{ partial|safe }}</div>
+
+<h2>Workout name</h2>
+<form class="group" hx-post="/programs/{{ p.id }}/rename" hx-swap="none"
+      hx-on::after-request="const v=this.wname.value.trim(); if(v) document.getElementById('ttl').textContent=v">
+  <div class="row"><input name="wname" value="{{ p.name }}" required autocomplete="off"><button class="blue">Rename</button></div>
+</form>
 
 <h2>Add step</h2>
 <form id="addstep" class="group" hx-post="/programs/{{ p.id }}/steps" hx-target="#steps" hx-encoding="multipart/form-data"

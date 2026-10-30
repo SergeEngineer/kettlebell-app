@@ -1,10 +1,17 @@
 {% if exercises %}
 <ul class="group">
 {% for e in exercises %}
-  <li class="row">
-    {% if e.gif %}<img class="thumb" src="/media/{{ e.gif }}" alt="">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
-    <span class="grow"><strong>{{ e.name }}</strong></span>
-    <button class="icon red" hx-delete="/exercises/{{ e.id }}" hx-target="#list" hx-confirm="Delete {{ e.name }}?">✕</button>
+  <li>
+    <div class="row">
+      {% if e.gif %}<img class="thumb" src="/media/{{ e.gif }}" alt="">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
+      <span class="grow"><strong>{{ e.name }}</strong></span>
+      <button class="icon" aria-label="Rename" onclick="const f=this.closest('li').querySelector('.edit');f.hidden=!f.hidden">✎</button>
+      <button class="icon red" hx-delete="/exercises/{{ e.id }}" hx-target="#list" hx-confirm="Delete {{ e.name }}?">✕</button>
+    </div>
+    <form class="edit" hidden hx-post="/exercises/{{ e.id }}" hx-target="#list">
+      <div class="row"><input name="name" value="{{ e.name }}" required autocomplete="off"></div>
+      <div class="row btns"><button type="button" class="dimbtn" onclick="this.closest('form').hidden=true">Cancel</button><button class="blue">Save</button></div>
+    </form>
   </li>
 {% endfor %}
 </ul>

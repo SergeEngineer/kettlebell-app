@@ -26,7 +26,7 @@
 
   <div class="name"><h2 id="title">{{ p.name }}</h2><small id="next"></small></div>
 
-  <div class="media"><img id="pic" alt="" hidden><div id="nopic" hidden></div></div>
+  <div class="media"><img id="pic" alt="" hidden></div>
   <div class="spacer"></div>
 
   <div class="ctrl">
@@ -36,6 +36,7 @@
   </div>
 </div>
 
+<video id="ns" src="/static/nosleep.mp4" loop muted playsinline webkit-playsinline style="position:fixed;left:0;top:0;width:1px;height:1px;opacity:.01;pointer-events:none"></video>
 <div id="begin" class="overlay"><button class="start">TAP TO BEGIN</button>
   <p id="hint" class="hint" hidden>For true full screen on iPhone: tap Share → Add to Home Screen, then open Kettlebell from your Home Screen.</p></div>
 <div id="done" class="overlay" hidden><h1>Workout complete</h1><a class="start" href="/programs/{{ p.id }}" onclick="exitFS()">Done</a></div>
@@ -52,6 +53,34 @@ function enterFS(){ const e=document.documentElement, f=e.requestFullscreen||e.w
 function exitFS(){ const f=document.exitFullscreen||document.webkitExitFullscreen;
   if(f && (document.fullscreenElement||document.webkitFullscreenElement)){ try{ const r=f.call(document); if(r&&r.catch) r.catch(()=>{}); }catch(_){} } }
 if(/iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone) $('hint').hidden=false;
+const ns = $('ns'); ns.muted = true;
+// Keep the screen on like a video player: Wake Lock API (HTTPS only) + a tiny silent looping video (works on plain HTTP too)
+function keepAwake(){ ns.play().catch(()=>{});
+  if(navigator.wakeLock) navigator.wakeLock.request('screen').then(l=>{ wake=l; }).catch(()=>{}); }
+function releaseAwake(){ try{ if(wake) wake.release(); }catch(e){} ns.pause(); }
+// Halftone (ordered-dither) fade on the top and bottom edges of the GIF
+const BAYER=[[0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],[12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],
+             [3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],[15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]];
+const FADE=0.2, CELL=4; let maskKey='';   // FADE = share of the height faded at each edge, CELL = dot size in px
+function applyFade(){
+  const pic=$('pic'), w=pic.clientWidth, h=pic.clientHeight; if(!w||!h) return;
+  const key=w+'x'+h; if(key===maskKey) return; maskKey=key;
+  const dpr=window.devicePixelRatio||1, W=Math.round(w*dpr), H=Math.round(h*dpr), cell=Math.max(1,Math.round(CELL*dpr));
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const g=cv.getContext('2d'), img=g.createImageData(W,H), d=img.data;
+  for(let y=0;y<H;y++){
+    const cy=Math.floor(y/cell), yy=cy*cell+cell/2, t=Math.min(1,Math.min(yy,H-yy)/(FADE*H)), v=t*t*(3-2*t);
+    for(let x=0;x<W;x++){
+      const th=(BAYER[cy%8][Math.floor(x/cell)%8]+.5)/64, i=(y*W+x)*4;
+      d[i]=d[i+1]=d[i+2]=255; d[i+3]=v>th?255:0;
+    }
+  }
+  g.putImageData(img,0,0);
+  const url='url('+cv.toDataURL('image/png')+')';
+  pic.style.webkitMaskImage=url; pic.style.maskImage=url;
+}
+$('pic').addEventListener('load',applyFade);
+if(window.ResizeObserver) new ResizeObserver(applyFade).observe($('pic'));
 $('arc').style.strokeDasharray = C;
 let i=0, end=0, remain=0, total=0, paused=true, lastSec=-1, ctx=null, wake=null;
 $('pp').innerHTML = PLAY;
@@ -70,7 +99,6 @@ function load(k){
   const pic = s.gif || (s.kind!=='ex' && nx && nx.gif) || null;
   $('pic').hidden=!pic;
   if(pic && $('pic').getAttribute('src')!==pic) $('pic').src=pic;
-  $('nopic').hidden=!!pic; $('nopic').textContent = s.kind==='rest' ? 'Rest' : $('title').textContent;
   $('next').textContent = nx ? 'Next: '+nx.name+' · '+fmt(nx.seconds) : 'Last one';
   beep(s.kind==='ex'?1100:660,.3); if(navigator.vibrate) navigator.vibrate(200);
   draw();
@@ -78,20 +106,20 @@ function load(k){
 function draw(){ $('time').textContent=fmt(Math.ceil(remain/1000));
   $('arc').style.strokeDashoffset = C*(1-remain/total); }
 function setPaused(p){ paused=p; $('pp').innerHTML=p?PLAY:PAUSE; if(!p) end=Date.now()+remain; }
-function finish(){ paused=true; $('done').hidden=false; exitFS(); beep(1320,.5); if(wake) wake.release(); }
+function finish(){ paused=true; $('done').hidden=false; exitFS(); beep(1320,.5); releaseAwake(); }
 setInterval(()=>{ if(paused) return; remain=end-Date.now();
   if(remain<=0){ load(i+1); return; }
   const sec=Math.ceil(remain/1000); if(sec<=3 && sec!==lastSec) beep(880); lastSec=sec; draw(); }, 100);
 
 $('begin').onclick = async ()=>{ $('begin').hidden=true; enterFS();
   ctx = new (window.AudioContext||window.webkitAudioContext)();
-  try{ wake = await navigator.wakeLock.request('screen'); }catch(e){}
+  keepAwake();
   load(0); setPaused(false); };
 $('pp').onclick = ()=>setPaused(!paused);
 $('skip').onclick = ()=>{ load(i+1); if(!paused) setPaused(false); };
 $('prev').onclick = ()=>{ load(i-1); if(!paused) setPaused(false); };
 document.addEventListener('visibilitychange', async ()=>{ if(document.visibilityState==='visible' && !paused){
-  try{ wake = await navigator.wakeLock.request('screen'); }catch(e){} }});
+  keepAwake(); }});
 </script>
 </body>
 </html>

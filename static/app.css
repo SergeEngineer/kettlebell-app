@@ -56,25 +56,24 @@ button.wide{width:100%;text-align:center;padding:4px}
 .stage>.media{position:absolute;inset:0;z-index:0;background:#000;display:grid;place-items:center;pointer-events:none}
 .media::after{content:"";position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.65),transparent 32%,transparent 66%,rgba(0,0,0,.7))}
 .media img{width:100%;height:auto;max-height:100%;object-fit:contain;transition:opacity .5s,filter .5s}
-.player[data-kind=rest] #pic{opacity:.35;filter:grayscale(.6)}
-#nopic{font-size:40px;font-weight:700;text-align:center;padding:20px;color:var(--dim)}
+.player[data-kind=rest] #pic,.player[data-kind=ready] #pic{opacity:.35;filter:grayscale(.6)}
 .top{display:flex;align-items:center;gap:12px;width:100%}
 .circ{width:44px;height:44px;border-radius:22px;background:rgba(30,30,30,.55);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:var(--y);display:grid;place-items:center;flex:none}
 .circ svg{width:22px;height:22px}
 .top strong{display:block;font-size:19px;font-weight:600;text-shadow:0 1px 8px #000}
 .top small{text-shadow:0 1px 8px #000}
-.ring{position:relative;height:min(30dvh,62vw);aspect-ratio:1;flex:none;border-radius:50%;background:rgba(0,0,0,.3);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.ring{position:relative;height:min(30dvh,62vw);aspect-ratio:1;flex:none;border-radius:50%;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
 .ring svg{width:100%;height:100%;transform:rotate(-90deg)}
 .ring circle{fill:none;stroke-width:16}
 .ring .bg{stroke:rgba(255,255,255,.14)}
-.ring .fg{stroke:var(--accent);stroke-opacity:.88;stroke-linecap:round;transition:stroke .3s}
+.ring .fg{stroke:var(--accent);stroke-opacity:1;stroke-linecap:round;transition:stroke .3s}
 .ringtxt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-#time{font-size:clamp(44px,14vw,64px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1;opacity:.92}
+#time{font-size:clamp(44px,14vw,64px);font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
 #phase{font-size:15px;color:var(--dim);letter-spacing:2px;text-transform:uppercase}
 .name{text-align:center;width:100%;text-shadow:0 1px 10px #000}
 .name h2{font-size:26px;font-weight:700;color:var(--y);text-transform:none;margin:0 0 2px}
 .name small{font-size:15px}
-.ctrl{display:flex;gap:26px;align-items:center;background:rgba(22,22,22,.5);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-radius:34px;padding:12px 24px}
+.ctrl{display:flex;gap:26px;align-items:center;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);border-radius:34px;padding:12px 24px}
 .ctrl button{width:56px;height:56px;border-radius:28px;background:rgba(255,255,255,.1);color:var(--y);display:grid;place-items:center;padding:0}
 .ctrl button svg{width:26px;height:26px}
 .ctrl .big{width:76px;height:76px;border-radius:38px;background:rgba(255,214,10,.88);color:#000}
@@ -82,3 +81,10 @@ button.wide{width:100%;text-align:center;padding:4px}
 .overlay{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.92);display:flex;flex-direction:column;gap:20px;align-items:center;justify-content:center;padding:30px;text-align:center}
 .overlay .start{max-width:320px;margin:0}
 .hint{max-width:300px;color:var(--dim);font-size:14px;margin:0}
+
+#pic{-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
+ul.group>li+li{border-top:.5px solid var(--sep)}
+ul.group>li>.row{gap:8px}
+.edit{background:#0c0c0c;border-top:.5px solid var(--sep)}
+.btns{justify-content:flex-end;gap:22px}
+.dimbtn{color:var(--dim);padding:12px 10px}

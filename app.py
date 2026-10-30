@@ -29,8 +29,10 @@ with sqlite3.connect(os.path.join(DATA, "app.db")) as c:
     create table if not exists exercises(id integer primary key, name text not null, gif text);
     create table if not exists programs(id integer primary key, name text not null);
     create table if not exists steps(id integer primary key, program_id integer not null,
-        pos integer not null, exercise_id integer, seconds integer not null);
+        pos integer not null, exercise_id integer, seconds integer not null, label text);
     """)
+    if "label" not in [row[1] for row in c.execute("pragma table_info(steps)")]:
+        c.execute("alter table steps add column label text")
 
 
 @app.template_filter("fmt")
@@ -51,7 +53,7 @@ def exercises_partial():
 
 
 def get_steps(pid):
-    return db().execute("""select s.id, s.seconds, s.exercise_id, e.name, e.gif
+    return db().execute("""select s.id, s.seconds, s.exercise_id, s.label, e.name, e.gif
         from steps s left join exercises e on e.id=s.exercise_id
         where s.program_id=? order by s.pos, s.id""", (pid,)).fetchall()
 
@@ -150,6 +152,25 @@ def del_step(sid):
     return steps_partial(pid)
 
 
+@app.post("/programs/<int:pid>/rename")
+def rename_program(pid):
+    name = request.form.get("wname", "").strip()
+    if name:
+        db().execute("update programs set name=? where id=?", (name, pid))
+        db().commit()
+    return "", 204
+
+
+@app.post("/steps/<int:sid>")
+def edit_step(sid):
+    row = db().execute("select program_id, seconds from steps where id=?", (sid,)).fetchone() or abort(404)
+    label = request.form.get("label", "").strip() or None
+    secs = int(request.form.get("min") or 0) * 60 + int(request.form.get("sec") or 0)
+    db().execute("update steps set label=?, seconds=? where id=?", (label, secs if secs > 0 else row["seconds"], sid))
+    db().commit()
+    return steps_partial(row["program_id"])
+
+
 # ---------- exercises ----------
 @app.get("/exercises")
 def exercises():
@@ -168,6 +189,15 @@ def add_exercise():
             f.save(os.path.join(UPLOADS, fn))
     if name:
         db().execute("insert into exercises(name,gif) values(?,?)", (name, fn))
+        db().commit()
+    return exercises_partial()
+
+
+@app.post("/exercises/<int:eid>")
+def rename_exercise(eid):
+    name = request.form.get("name", "").strip()
+    if name:
+        db().execute("update exercises set name=? where id=?", (name, eid))
         db().commit()
     return exercises_partial()
 
@@ -200,7 +230,7 @@ def manifest():
 @app.get("/run/<int:pid>")
 def run(pid):
     p = db().execute("select * from programs where id=?", (pid,)).fetchone() or abort(404)
-    steps = [{"name": s["name"] or "Rest", "seconds": s["seconds"],
+    steps = [{"name": s["label"] or s["name"] or "Rest", "seconds": s["seconds"],
               "gif": f"/media/{s['gif']}" if s["gif"] else None,
               "kind": "ex" if s["exercise_id"] else "rest"} for s in get_steps(pid)]
     return render_template("run.html", p=p, steps=steps)

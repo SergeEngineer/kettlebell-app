@@ -12,6 +12,8 @@ A small web app for building kettlebell workouts and running them with a countdo
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
 - Reorder steps with the up and down buttons, and remove steps you don't want.
 - See the total workout time.
+- Rename a workout, and edit any step: give it a custom name (for example "Water break") and change its time. Exercises can be renamed in the Exercises tab.
+- GIF edges dissolve into the black background with a halftone dither fade.
 
 Example workout:
 
@@ -30,7 +32,7 @@ Example workout:
 - Shows what is coming next, with pause, skip and back controls.
 - A 5 second "Get ready" countdown runs before the first step.
 - Beeps in the last 3 seconds and at every change. Vibrates on devices that support it.
-- Keeps the screen awake while running (needs HTTPS, see notes below).
+- Keeps the screen awake while running (see notes below).
 
 ## Tech stack
 
@@ -97,7 +99,7 @@ To update after changing code: rebuild the image and recreate the container. You
 
 ## Notes
 
-- **HTTPS:** the "keep screen awake" feature only works over HTTPS. Without it the timer still runs, but the screen may dim. Put the app behind Nginx Proxy Manager, Tailscale or a Cloudflare tunnel to fix this.
+- **Screen stays on:** during a workout the app keeps the screen awake, the same way a video player does. It uses the browser Wake Lock API (needs HTTPS) plus a tiny silent hidden video as a fallback that also works over plain HTTP. If the screen still dims on your device, set Settings → Display & Brightness → Auto-Lock to Never, or serve the app over HTTPS (Nginx Proxy Manager, Tailscale or a Cloudflare tunnel).
 - **Full screen on iPhone:** Safari on iPhone does not allow websites to hide the address bar. For a true full-screen player, use **Share → Add to Home Screen** and open the app from the Home Screen icon. On Android, iPad and desktop, tapping "Tap to begin" enters full screen automatically, and "Done" exits it.
 - **Sound on iPhone:** Safari only allows sound after a tap, so the player starts with a "Tap to begin" screen.
 - **No login:** the app has no authentication. Keep it on your home network or behind a VPN.
