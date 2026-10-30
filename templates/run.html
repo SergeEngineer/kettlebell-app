@@ -10,31 +10,42 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="player" data-kind="ready">
-<a class="x" href="/programs/{{ p.id }}">✕</a>
 <div class="stage">
-  <div class="phase" id="phase">Get ready</div>
-  <div class="media"><img id="pic" alt="" hidden><div id="nopic">🏋️</div></div>
-  <h2 id="title">{{ p.name }}</h2>
+  <div class="top">
+    <a class="circ" href="/programs/{{ p.id }}" aria-label="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></a>
+    <div><strong>{{ p.name }}</strong><small id="step">Get ready</small></div>
+  </div>
+
   <div class="ring">
     <svg viewBox="0 0 240 240"><circle class="bg" cx="120" cy="120" r="108"/><circle id="arc" class="fg" cx="120" cy="120" r="108"/></svg>
-    <div id="time">0:05</div>
+    <div class="ringtxt"><div id="time">0:05</div><div id="phase">Get ready</div></div>
   </div>
-  <div id="next" class="next"></div>
+
+  <div class="name"><h2 id="title">{{ p.name }}</h2><small id="next"></small></div>
+
+  <div class="media"><img id="pic" alt="" hidden><div id="nopic" hidden></div></div>
+
   <div class="ctrl">
-    <button id="prev" aria-label="Back">⏮</button>
-    <button id="pp" class="big" aria-label="Pause">▶</button>
-    <button id="skip" aria-label="Skip">⏭</button>
+    <button id="prev" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+    <button id="pp" class="big" aria-label="Pause"></button>
+    <button id="skip" aria-label="Skip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
   </div>
 </div>
+
 <div id="begin" class="overlay"><button class="start">TAP TO BEGIN</button></div>
 <div id="done" class="overlay" hidden><h1>Workout complete</h1><a class="start" href="/programs/{{ p.id }}">Done</a></div>
+
 <script>
 const STEPS = {{ steps|tojson }};
 const seq = [{name:'Get ready', seconds:5, gif:null, kind:'ready'}].concat(STEPS);
 const $ = id => document.getElementById(id), C = 2*Math.PI*108;
 const fmt = s => Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+const PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 $('arc').style.strokeDasharray = C;
 let i=0, end=0, remain=0, total=0, paused=true, lastSec=-1, ctx=null, wake=null;
+$('pp').innerHTML = PLAY;
 
 function beep(f=880, d=.12){ if(!ctx) return; const o=ctx.createOscillator(), g=ctx.createGain();
   o.frequency.value=f; o.connect(g); g.connect(ctx.destination); g.gain.value=.25;
@@ -45,21 +56,23 @@ function load(k){
   total=remain=s.seconds*1000; end=Date.now()+remain; lastSec=-1;
   document.body.dataset.kind=s.kind;
   $('phase').textContent = s.kind==='ex'?'Work':s.kind==='rest'?'Rest':'Get ready';
+  $('step').textContent = i===0 ? 'Get ready' : 'Step '+i+' of '+STEPS.length;
   $('title').textContent = s.kind==='ready' && nx ? nx.name : s.name;
   const pic = s.gif || (s.kind!=='ex' && nx && nx.gif) || null;
-  $('pic').hidden=!pic; $('nopic').hidden=!!pic; if(pic && $('pic').getAttribute('src')!==pic) $('pic').src=pic;
+  $('pic').hidden=!pic;
+  if(pic && $('pic').getAttribute('src')!==pic) $('pic').src=pic;
+  $('nopic').hidden=!!pic; $('nopic').textContent = s.kind==='rest' ? 'Rest' : $('title').textContent;
   $('next').textContent = nx ? 'Next: '+nx.name+' · '+fmt(nx.seconds) : 'Last one';
   beep(s.kind==='ex'?1100:660,.3); if(navigator.vibrate) navigator.vibrate(200);
   draw();
 }
-function draw(){ const sec=Math.ceil(remain/1000); $('time').textContent=fmt(sec);
+function draw(){ $('time').textContent=fmt(Math.ceil(remain/1000));
   $('arc').style.strokeDashoffset = C*(1-remain/total); }
-function setPaused(p){ paused=p; $('pp').textContent=p?'▶':'⏸';
-  if(!p) end=Date.now()+remain; }
+function setPaused(p){ paused=p; $('pp').innerHTML=p?PLAY:PAUSE; if(!p) end=Date.now()+remain; }
 function finish(){ paused=true; $('done').hidden=false; beep(1320,.5); if(wake) wake.release(); }
 setInterval(()=>{ if(paused) return; remain=end-Date.now();
   if(remain<=0){ load(i+1); return; }
-  const sec=Math.ceil(remain/1000); if(sec<=3 && sec!==lastSec){ beep(880); } lastSec=sec; draw(); }, 100);
+  const sec=Math.ceil(remain/1000); if(sec<=3 && sec!==lastSec) beep(880); lastSec=sec; draw(); }, 100);
 
 $('begin').onclick = async ()=>{ $('begin').hidden=true;
   ctx = new (window.AudioContext||window.webkitAudioContext)();
@@ -70,7 +83,6 @@ $('skip').onclick = ()=>{ load(i+1); if(!paused) setPaused(false); };
 $('prev').onclick = ()=>{ load(i-1); if(!paused) setPaused(false); };
 document.addEventListener('visibilitychange', async ()=>{ if(document.visibilityState==='visible' && !paused){
   try{ wake = await navigator.wakeLock.request('screen'); }catch(e){} }});
-if(!seq.length>1) {}
 </script>
 </body>
 </html>

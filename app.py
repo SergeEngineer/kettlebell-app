@@ -91,15 +91,39 @@ def del_program(pid):
     return redirect("/")
 
 
+def save_gif(f):
+    if f and f.filename:
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext in ALLOWED:
+            fn = uuid.uuid4().hex + ext
+            f.save(os.path.join(UPLOADS, fn))
+            return fn
+    return None
+
+
 @app.post("/programs/<int:pid>/steps")
 def add_step(pid):
-    what = request.form.get("what", "rest")
+    kind = request.form.get("kind", "workout")
     secs = int(request.form.get("min") or 0) * 60 + int(request.form.get("sec") or 0)
+    ex_id = None
+    if kind == "workout":
+        sel = request.form.get("exercise", "")
+        if sel == "new":
+            name = request.form.get("new_name", "").strip()
+            if not name:
+                return steps_partial(pid)
+            cur = db().execute("insert into exercises(name,gif) values(?,?)",
+                               (name, save_gif(request.files.get("gif"))))
+            ex_id = cur.lastrowid
+        elif sel.isdigit():
+            ex_id = int(sel)
+        else:
+            return steps_partial(pid)
     if secs > 0:
         pos = db().execute("select coalesce(max(pos),-1)+1 from steps where program_id=?", (pid,)).fetchone()[0]
         db().execute("insert into steps(program_id,pos,exercise_id,seconds) values(?,?,?,?)",
-                     (pid, pos, None if what == "rest" else int(what), secs))
-        db().commit()
+                     (pid, pos, ex_id, secs))
+    db().commit()
     return steps_partial(pid)
 
 
@@ -178,4 +202,4 @@ def run(pid):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    app.run(host="0.0.0.0", port=8088, debug=True)

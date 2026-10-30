@@ -2,7 +2,9 @@
 <ul class="group">
 {% for s in steps %}
   <li class="row">
-    {% if s.gif %}<img class="thumb" src="/media/{{ s.gif }}" alt="">{% else %}<span class="thumb rest">{{ '💤' if not s.exercise_id else '🏋️' }}</span>{% endif %}
+    {% if s.gif %}<img class="thumb" src="/media/{{ s.gif }}" alt="">
+    {% elif s.exercise_id %}<span class="thumb rest">{{ s.name[:1]|upper }}</span>
+    {% else %}<span class="thumb rest sm">REST</span>{% endif %}
     <span class="grow"><strong>{{ s.name or 'Rest' }}</strong><small>{{ s.seconds|fmt }}</small></span>
     <button class="icon" hx-post="/steps/{{ s.id }}/move/up" hx-target="#steps" {% if loop.first %}disabled{% endif %}>↑</button>
     <button class="icon" hx-post="/steps/{{ s.id }}/move/down" hx-target="#steps" {% if loop.last %}disabled{% endif %}>↓</button>
@@ -11,4 +13,4 @@
 {% endfor %}
 </ul>
 <p class="total">Total {{ total|fmt }}</p>
-{% else %}<p class="empty">No steps yet. Add an exercise or a rest below.</p>{% endif %}
+{% else %}<p class="empty">No steps yet. Add a workout or a rest below.</p>{% endif %}

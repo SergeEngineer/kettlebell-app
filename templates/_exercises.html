@@ -2,7 +2,7 @@
 <ul class="group">
 {% for e in exercises %}
   <li class="row">
-    {% if e.gif %}<img class="thumb" src="/media/{{ e.gif }}" alt="">{% else %}<span class="thumb rest">🏋️</span>{% endif %}
+    {% if e.gif %}<img class="thumb" src="/media/{{ e.gif }}" alt="">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
     <span class="grow"><strong>{{ e.name }}</strong></span>
     <button class="icon red" hx-delete="/exercises/{{ e.id }}" hx-target="#list" hx-confirm="Delete {{ e.name }}?">✕</button>
   </li>

@@ -67,10 +67,10 @@ kettlebell/
 
 ```bash
 docker build -t kettlebell .
-docker run --rm -p 8080:8080 -v "$(pwd)/data:/data" kettlebell
+docker run --rm -p 8088:8088 -v "$(pwd)/data:/data" kettlebell
 ```
 
-Open http://localhost:8080. Your database and GIFs are stored in `./data`.
+Open http://localhost:8088. Your database and GIFs are stored in `./data`.
 
 Or with Compose:
 
@@ -88,9 +88,9 @@ docker compose up --build
    ```
 3. In the Docker tab, choose **Add Container** and set:
    - **Repository:** `kettlebell`
-   - **Port:** host `8080` to container `8080`
+   - **Port:** host `8088` to container `8088`
    - **Path:** `/mnt/user/appdata/kettlebell` mapped to `/data` (keeps your data between updates)
-4. Open `http://UNRAID-IP:8080` on your phone.
+4. Open `http://UNRAID-IP:8088` on your phone.
 5. In Safari, use **Share → Add to Home Screen** to get the full-screen app look.
 
 To update after changing code: rebuild the image and recreate the container. Your data in `/data` is kept.

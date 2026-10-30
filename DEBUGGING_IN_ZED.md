@@ -29,10 +29,10 @@ Then restart the language server (command palette → `editor: restart language 
 
 ```bash
 source .venv/bin/activate
-DATA_DIR=./data FLASK_DEBUG=1 flask --app app run --host 0.0.0.0 --port 8080
+DATA_DIR=./data FLASK_DEBUG=1 flask --app app run --host 0.0.0.0 --port 8088
 ```
 
-Open http://localhost:8080. `DATA_DIR=./data` keeps the test database and GIFs inside the project instead of `/data`.
+Open http://localhost:8088. `DATA_DIR=./data` keeps the test database and GIFs inside the project instead of `/data`.
 
 ## 3. Debug with breakpoints
 
@@ -47,7 +47,7 @@ Create `.zed/debug.json`:
     "adapter": "Debugpy",
     "request": "launch",
     "module": "flask",
-    "args": ["run", "--no-reload", "--host", "0.0.0.0", "--port", "8080"],
+    "args": ["run", "--no-reload", "--host", "0.0.0.0", "--port", "8088"],
     "env": {
       "FLASK_APP": "app",
       "FLASK_DEBUG": "1",
@@ -61,7 +61,7 @@ Steps:
 
 1. Open `app.py` and click in the gutter next to a line number to set a breakpoint, for example inside `add_step`.
 2. Open the debug panel (or press `F4`) and start **Flask app**.
-3. Open http://localhost:8080 in a browser and trigger the action. Zed pauses on the breakpoint.
+3. Open http://localhost:8088 in a browser and trigger the action. Zed pauses on the breakpoint.
 4. Use the step controls to step over, step into or continue, and inspect variables in the panel.
 
 `--no-reload` is required. Flask's auto-reloader starts a second process, and breakpoints become unreliable there.
@@ -91,7 +91,7 @@ Add `.zed/tasks.json` to run Docker from Zed (command palette → `task: spawn`)
   },
   {
     "label": "docker run",
-    "command": "docker run --rm -p 8080:8080 -v $ZED_WORKTREE_ROOT/data:/data kettlebell",
+    "command": "docker run --rm -p 8088:8088 -v $ZED_WORKTREE_ROOT/data:/data kettlebell",
     "use_new_terminal": true
   }
 ]
@@ -101,7 +101,7 @@ Or in a terminal:
 
 ```bash
 docker build -t kettlebell .
-docker run --rm -p 8080:8080 -v "$(pwd)/data:/data" kettlebell
+docker run --rm -p 8088:8088 -v "$(pwd)/data:/data" kettlebell
 ```
 
 The `./data` folder is mounted as `/data`, the same way it will be on Unraid, so uploaded GIFs persist between runs. Stop the container with `Ctrl+C`.
@@ -110,7 +110,7 @@ The `./data` folder is mounted as `/data`, the same way it will be on Unraid, so
 
 **Desktop browser**
 
-1. Open http://localhost:8080 in Chromium.
+1. Open http://localhost:8088 in Chromium.
 2. Press `Ctrl+Shift+M` to open the device toolbar.
 3. Pick an iPhone preset such as iPhone 15 Pro.
 
@@ -119,8 +119,8 @@ You will see the safe areas, tab bar and player at phone size.
 **Real phone**
 
 1. Connect the phone to the same Wi-Fi as your Omarchy machine.
-2. Open `http://<omarchy-ip>:8080` in Safari. Find the IP with `ip a`.
-3. If the page does not load, allow the port in the firewall: `sudo ufw allow 8080/tcp`.
+2. Open `http://<omarchy-ip>:8088` in Safari. Find the IP with `ip a`.
+3. If the page does not load, allow the port in the firewall: `sudo ufw allow 8088/tcp`.
 4. Use **Share → Add to Home Screen** for the full-screen app look.
 
 Sound works on the phone after the first tap. Keeping the screen awake needs HTTPS, so it will not work over plain HTTP.
@@ -133,6 +133,6 @@ Sound works on the phone after the first tap. Keeping the screen awake needs HTT
 | Page loads but buttons do nothing | `static/htmx.min.js` is missing. Run the `curl` command in section 1 |
 | Breakpoints are never hit | Make sure `--no-reload` is in the debug args and you started the debugger, not a normal run |
 | `permission denied` from Docker | Add your user to the `docker` group and log out and back in |
-| Port 8080 already in use | Stop the other process, or change the port in the run command and debug config |
-| Phone cannot reach the app | Check both devices are on the same network and the firewall allows 8080 |
+| Port 8088 already in use | Stop the other process, or change the port in the run command and debug config |
+| Phone cannot reach the app | Check both devices are on the same network and the firewall allows 8088 |
 | GIFs missing after a rebuild | Run the container with the `-v ./data:/data` mount |
