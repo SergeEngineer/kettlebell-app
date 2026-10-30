@@ -98,6 +98,7 @@ To update after changing code: rebuild the image and recreate the container. You
 ## Notes
 
 - **HTTPS:** the "keep screen awake" feature only works over HTTPS. Without it the timer still runs, but the screen may dim. Put the app behind Nginx Proxy Manager, Tailscale or a Cloudflare tunnel to fix this.
+- **Full screen on iPhone:** Safari on iPhone does not allow websites to hide the address bar. For a true full-screen player, use **Share → Add to Home Screen** and open the app from the Home Screen icon. On Android, iPad and desktop, tapping "Tap to begin" enters full screen automatically, and "Done" exits it.
 - **Sound on iPhone:** Safari only allows sound after a tap, so the player starts with a "Tap to begin" screen.
 - **No login:** the app has no authentication. Keep it on your home network or behind a VPN.
 - **GIF uploads:** `.gif`, `.webp`, `.png` and `.jpg` files up to 30 MB.

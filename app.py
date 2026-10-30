@@ -191,6 +191,11 @@ def media(f):
     return send_from_directory(UPLOADS, f, max_age=86400)
 
 
+@app.get("/manifest.webmanifest")
+def manifest():
+    return send_from_directory(app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json")
+
+
 # ---------- player ----------
 @app.get("/run/<int:pid>")
 def run(pid):
