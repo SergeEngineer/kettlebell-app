@@ -1,3 +1,4 @@
+{% from "_wheel.html" import wheel %}
 {% if steps %}
 <ul class="group">
 {% for s in steps %}
@@ -7,15 +8,14 @@
       {% elif s.exercise_id %}<span class="thumb rest">{{ (s.label or s.name or '?')[:1]|upper }}</span>
       {% else %}<span class="thumb rest sm">REST</span>{% endif %}
       <span class="grow"><strong>{{ s.label or s.name or 'Rest' }}</strong><small>{{ s.seconds|fmt }}{% if s.label and s.name %} · {{ s.name }}{% endif %}</small></span>
-      <button class="icon" aria-label="Edit" onclick="const f=this.closest('li').querySelector('.edit');f.hidden=!f.hidden">✎</button>
+      <button class="icon" aria-label="Edit" onclick="const f=this.closest('li').querySelector('.edit');f.hidden=!f.hidden;if(!f.hidden)initWheels(f)">✎</button>
       <button class="icon" hx-post="/steps/{{ s.id }}/move/up" hx-target="#steps" {% if loop.first %}disabled{% endif %}>↑</button>
       <button class="icon" hx-post="/steps/{{ s.id }}/move/down" hx-target="#steps" {% if loop.last %}disabled{% endif %}>↓</button>
       <button class="icon red" hx-delete="/steps/{{ s.id }}" hx-target="#steps">✕</button>
     </div>
     <form class="edit" hidden hx-post="/steps/{{ s.id }}" hx-target="#steps">
       <div class="row"><input name="label" value="{{ s.label or '' }}" placeholder="{{ s.name or 'Rest' }}" autocomplete="off"></div>
-      <label class="row"><span class="grow">Minutes</span><input class="num" type="number" name="min" min="0" max="99" value="{{ s.seconds // 60 }}" inputmode="numeric"></label>
-      <label class="row"><span class="grow">Seconds</span><input class="num" type="number" name="sec" min="0" max="59" value="{{ s.seconds % 60 }}" inputmode="numeric"></label>
+      {{ wheel(s.seconds // 60, s.seconds % 60) }}
       <div class="row btns"><button type="button" class="dimbtn" onclick="this.closest('form').hidden=true">Cancel</button><button class="blue">Save</button></div>
     </form>
   </li>

@@ -24,5 +24,41 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="15" r="6.5"/><path d="M8.3 9.8C7 3.5 17 3.5 15.7 9.8"/></svg>Exercises</a>
 </nav>
 {% endif %}
+<script>
+// iOS-style scroll wheels for minutes / seconds
+const IH = 40;
+function wheelPaint(w){
+  const c = w.scrollTop / IH, mid = Math.round(c);
+  (w._lit || []).forEach(el => { el.style.opacity = ''; el.style.transform = ''; el.style.fontWeight = ''; });
+  const items = w.querySelectorAll('.it'); w._lit = [];
+  for (let i = Math.max(0, mid - 3); i <= Math.min(items.length - 1, mid + 3); i++) {
+    const d = Math.abs(i - c), el = items[i];
+    el.style.opacity = Math.max(.15, 1 - d * .36);
+    el.style.transform = 'scale(' + Math.max(.72, 1 - d * .1) + ')';
+    el.style.fontWeight = d < .5 ? '600' : '400';
+    w._lit.push(el);
+  }
+}
+function initWheels(root){
+  (root || document).querySelectorAll('.wheel').forEach(w => {
+    if (!w._init) {
+      w._init = 1;
+      w.addEventListener('scroll', () => {
+        const v = Math.max(0, Math.round(w.scrollTop / IH));
+        w.closest('.picker').querySelector('input[name=' + w.dataset.target + ']').value = v;
+        wheelPaint(w);
+      }, {passive: true});
+      w.addEventListener('click', e => {
+        const it = e.target.closest('.it'); if (!it) return;
+        w.scrollTo({top: [...w.querySelectorAll('.it')].indexOf(it) * IH, behavior: 'smooth'});
+      });
+    }
+    w.scrollTop = (+w.dataset.val) * IH;
+    wheelPaint(w);
+  });
+}
+document.addEventListener('DOMContentLoaded', () => initWheels(document));
+document.addEventListener('htmx:load', e => initWheels(e.detail.elt));
+</script>
 </body>
 </html>
