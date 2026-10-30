@@ -115,24 +115,26 @@ ul.group>li>.sw>.row{padding:8px 14px}
 .row.tap{cursor:pointer}
 .edit .picker{border-top:0}
 
-html,body{overscroll-behavior:none}
 :root{--tabh:54px;--kb:0px}
 .tabs{height:calc(var(--tabh) + env(safe-area-inset-bottom));padding-bottom:0}
 .tabs a{padding:8px 0 0}
-html.kb .tabs{display:none}
+html.typing .tabs{display:none}
 
 /* new-workout bar: sits on top of the tab bar, or on top of the keyboard */
 .addbar{position:fixed;left:0;right:0;z-index:6;bottom:calc(var(--tabh) + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;
   padding:8px max(14px,calc((100vw - 560px)/2 + 14px));background:rgba(0,0,0,.9);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-top:.5px solid var(--sep)}
 .addbar input{flex:1;min-width:0;background:#1c1c1c;border-radius:18px;padding:10px 14px;font-size:17px}
 .addbar button{flex:none;background:var(--y);color:#000;font-weight:600;border-radius:18px;padding:10px 18px}
-html.kb .addbar{bottom:var(--kb)}
+html.typing .addbar{bottom:var(--kb)}
 body:has(.addbar) main{padding-bottom:calc(var(--tabh) + 84px + env(safe-area-inset-bottom))}
 
 /* swipe-to-delete rows */
 .sw{position:relative;overflow:hidden}
 .sw .row.tap{position:relative;background:var(--card);touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .sw .del{position:absolute;top:0;right:0;bottom:0;width:0;overflow:hidden;background:#ff453a;color:#fff;border:0;border-radius:0;
-  display:flex;align-items:center;justify-content:flex-start;padding:0 0 0 31px;white-space:nowrap}
-.sw .del svg{width:26px;height:26px;flex:none}
+  display:flex;align-items:center;justify-content:flex-start;padding:0;min-width:0;white-space:nowrap}
+.sw .del svg{width:26px;height:26px;flex:none;margin-left:31px}
 .thumb{-webkit-user-drag:none}
+
+a.row{text-decoration:none}
+.sw[data-kind=program]>.row{padding:13px 16px}

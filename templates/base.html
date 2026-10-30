@@ -85,11 +85,19 @@ function setX(sw, x, anim){
   sw.classList.toggle('open', x < 0);
 }
 function closeSwipes(except){ document.querySelectorAll('.sw.open').forEach(sw => { if (sw !== except) setX(sw, 0, true); }); }
-function removeStep(sw){
-  const id = sw.closest('li').dataset.id, row = sw.querySelector('.row'), del = sw.querySelector('.del');
+function removeSwipe(sw){
+  const li = sw.closest('li'), id = li.dataset.id, program = sw.dataset.kind === 'program';
+  if (program && !confirm('Delete this workout and all its steps? This cannot be undone.')) { setX(sw, 0, true); return; }
+  const row = sw.querySelector('.row'), del = sw.querySelector('.del');
   row.style.transition = 'transform .2s ease'; del.style.transition = 'width .2s ease';
   row.style.transform = 'translateX(-100%)'; del.style.width = '100%';
-  setTimeout(() => htmx.ajax('DELETE', '/steps/' + id, {target: '#steps'}), 180);
+  setTimeout(() => htmx.ajax('DELETE', (program ? '/programs/' : '/steps/') + id, {target: program ? '#list' : '#steps'}), 180);
+}
+function tapProgram(a, ev){
+  const sw = a.closest('.sw');
+  if (sw._dragged && Date.now() - sw._dragged < 400) { ev.preventDefault(); return false; }
+  if (sw.classList.contains('open')) { ev.preventDefault(); setX(sw, 0, true); return false; }
+  return true;
 }
 document.addEventListener('pointerdown', e => {
   if (e.target.closest('.del')) return;
@@ -115,7 +123,7 @@ function endSwipe(e){
   const s = swipe; swipe = null;
   if (!s.locked) return;
   s.sw._dragged = Date.now();
-  if (s.x < -s.sw.offsetWidth * 0.55) removeStep(s.sw);          // long swipe deletes right away
+  if (s.x < -s.sw.offsetWidth * 0.55) removeSwipe(s.sw);          // long swipe deletes right away
   else if (s.x < -OPEN_W / 2) setX(s.sw, -OPEN_W, true);          // short swipe reveals the bin
   else setX(s.sw, 0, true);
 }
@@ -128,10 +136,14 @@ if (window.visualViewport) {
   const upd = () => {
     const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
     root.style.setProperty('--kb', kb + 'px');
-    root.classList.toggle('kb', kb > 120);
   };
   vv.addEventListener('resize', upd); vv.addEventListener('scroll', upd); upd();
 }
+// while a text field is focused: hide the tab bar so only the keyboard + the input bar are visible
+const TEXTY = 'input:not([type=file]):not([type=hidden]):not([type=radio]):not([type=checkbox]), textarea';
+const setTyping = () => { const a = document.activeElement; document.documentElement.classList.toggle('typing', !!(a && a.matches(TEXTY))); };
+document.addEventListener('focusin', setTyping);
+document.addEventListener('focusout', () => setTimeout(setTyping, 60));
 function stepSaved(f){
   const li = f.closest('li'), s = (+f.elements.min.value) * 60 + (+f.elements.sec.value);
   li.dataset.seconds = s; li.querySelector('.tm').textContent = fmtTime(s);

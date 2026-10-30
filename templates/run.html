@@ -38,6 +38,7 @@
 
 <video id="ns" src="/static/nosleep.mp4" loop muted playsinline webkit-playsinline style="position:fixed;left:0;top:0;width:1px;height:1px;opacity:.01;pointer-events:none"></video>
 <div id="begin" class="overlay"><button class="start">TAP TO BEGIN</button>
+  <p id="hint2" class="hint" hidden>Screen keep-awake needs HTTPS. Without it your iPhone can still dim and lock: set Settings → Display &amp; Brightness → Auto-Lock → Never (and turn off Low Power Mode).</p>
   <p id="hint" class="hint" hidden>For true full screen on iPhone: tap Share → Add to Home Screen, then open Kettlebell from your Home Screen.</p></div>
 <div id="done" class="overlay" hidden><h1>Workout complete</h1><a class="start" href="/programs/{{ p.id }}" onclick="exitFS()">Done</a></div>
 
@@ -54,10 +55,17 @@ function exitFS(){ const f=document.exitFullscreen||document.webkitExitFullscree
   if(f && (document.fullscreenElement||document.webkitFullscreenElement)){ try{ const r=f.call(document); if(r&&r.catch) r.catch(()=>{}); }catch(_){} } }
 if(/iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone) $('hint').hidden=false;
 const ns = $('ns'); ns.muted = true;
-// Keep the screen on like a video player: Wake Lock API (HTTPS only) + a tiny silent looping video (works on plain HTTP too)
-function keepAwake(){ ns.play().catch(()=>{});
-  if(navigator.wakeLock) navigator.wakeLock.request('screen').then(l=>{ wake=l; }).catch(()=>{}); }
-function releaseAwake(){ try{ if(wake) wake.release(); }catch(e){} ns.pause(); }
+// Keep the screen on: Wake Lock API (HTTPS only) + silent looping video fallback, refreshed on every tap
+let awakeOn=false;
+function lock(){
+  if(!navigator.wakeLock || wake) return;
+  navigator.wakeLock.request('screen').then(l=>{ wake=l; l.addEventListener('release',()=>{ wake=null; }); }).catch(()=>{});
+}
+function keepAwake(){ awakeOn=true; ns.play().catch(()=>{}); lock(); }
+function releaseAwake(){ awakeOn=false; try{ if(wake) wake.release(); }catch(e){} wake=null; ns.pause(); }
+setInterval(()=>{ if(!awakeOn) return; lock(); if(ns.paused) ns.play().catch(()=>{}); }, 4000);
+document.addEventListener('pointerdown',()=>{ if(awakeOn) keepAwake(); });
+if(!window.isSecureContext || !navigator.wakeLock) $('hint2').hidden=false;
 $('arc').style.strokeDasharray = C;
 let i=0, end=0, remain=0, total=0, paused=true, lastSec=-1, ctx=null, wake=null;
 $('pp').innerHTML = PLAY;

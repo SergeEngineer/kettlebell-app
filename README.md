@@ -12,7 +12,7 @@ A small web app for building kettlebell workouts and running them with a countdo
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
 - Reorder steps with the up and down buttons, and remove steps you don't want.
 - See the total workout time.
-- Rename or delete a workout with the icons beside its title. Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
+- Rename a workout with the ✎ icon beside its title, and swipe a workout left on the home screen to delete it (with a confirmation). Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
 
 Example workout:
 
@@ -98,7 +98,12 @@ To update after changing code: rebuild the image and recreate the container. You
 
 ## Notes
 
-- **Screen stays on:** during a workout the app keeps the screen awake, the same way a video player does. It uses the browser Wake Lock API (needs HTTPS) plus a tiny silent hidden video as a fallback that also works over plain HTTP. If the screen still dims on your device, set Settings → Display & Brightness → Auto-Lock to Never, or serve the app over HTTPS (Nginx Proxy Manager, Tailscale or a Cloudflare tunnel).
+- **Screen stays on:** during a workout the app asks the iPhone to keep the screen awake (Wake Lock API) and also plays a tiny silent hidden video as a fallback. On iPhone this has limits you should know about:
+  - The Wake Lock API only works over **HTTPS**. Over plain `http://` it is unavailable, and the video fallback is not reliable, especially in Home Screen apps on recent iOS versions.
+  - In a **Home Screen app**, the Wake Lock API only works from iOS 18.4. In a normal Safari tab it works from iOS 16.4.
+  - **Low Power Mode** shortens auto-lock to 30 seconds and can override this.
+  - The guaranteed fallback is Settings → Display & Brightness → Auto-Lock → **Never** (switch it back afterwards).
+  - To get HTTPS on Unraid, put the app behind Nginx Proxy Manager (Let's Encrypt), a Cloudflare tunnel, or Tailscale (`tailscale serve`, with HTTPS certificates enabled in the Tailscale admin console).
 - **Full screen on iPhone:** Safari on iPhone does not allow websites to hide the address bar. For a true full-screen player, use **Share → Add to Home Screen** and open the app from the Home Screen icon. On Android, iPad and desktop, tapping "Tap to begin" enters full screen automatically, and "Done" exits it.
 - **Sound on iPhone:** Safari only allows sound after a tap, so the player starts with a "Tap to begin" screen.
 - **No login:** the app has no authentication. Keep it on your home network or behind a VPN.

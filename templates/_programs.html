@@ -1,9 +1,15 @@
 {% if programs %}
 <ul class="group">
 {% for p in programs %}
-  <li><a class="row" href="/programs/{{ p.id }}">
-    <span class="grow"><strong>{{ p.name }}</strong><small>{{ p.n }} steps · {{ p.total|fmt }}</small></span>
-    <i class="chev">›</i></a></li>
+  <li data-id="{{ p.id }}">
+    <div class="sw" data-kind="program">
+      <a class="row tap" href="/programs/{{ p.id }}" draggable="false" onclick="return tapProgram(this, event)">
+        <span class="grow"><strong>{{ p.name }}</strong><small>{{ p.n }} steps · {{ p.total|fmt }}</small></span>
+        <i class="chev">›</i>
+      </a>
+      <button class="del" aria-label="Delete workout" onclick="removeSwipe(this.closest('.sw'))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
+    </div>
+  </li>
 {% endfor %}
 </ul>
-{% else %}<p class="empty">No workouts yet. Name one above to get started.</p>{% endif %}
+{% else %}<p class="empty">No workouts yet. Name one below to get started.</p>{% endif %}

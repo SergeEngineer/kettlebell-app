@@ -3,7 +3,7 @@
 <ul class="group">
 {% for s in steps %}
   <li data-id="{{ s.id }}" data-seconds="{{ s.seconds }}">
-    <div class="sw">
+    <div class="sw" data-kind="step">
       <div class="row tap" onclick="toggleStep(this, event)">
         {% if s.gif %}<img class="thumb" src="/media/{{ s.gif }}" alt="" draggable="false">
         {% elif s.exercise_id %}<span class="thumb rest">{{ (s.name or '?')[:1]|upper }}</span>
@@ -12,7 +12,7 @@
         <button class="icon" aria-label="Move up" hx-post="/steps/{{ s.id }}/move/up" hx-target="#steps" {% if loop.first %}disabled{% endif %}>↑</button>
         <button class="icon" aria-label="Move down" hx-post="/steps/{{ s.id }}/move/down" hx-target="#steps" {% if loop.last %}disabled{% endif %}>↓</button>
       </div>
-      <button class="del" aria-label="Delete step" onclick="removeStep(this.closest('.sw'))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
+      <button class="del" aria-label="Delete step" onclick="removeSwipe(this.closest('.sw'))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
     </div>
     <form class="edit" hidden hx-post="/steps/{{ s.id }}" hx-trigger="wheeldone" hx-swap="none"
           hx-on::before-request="if(!(+this.elements.min.value||+this.elements.sec.value)) event.preventDefault()"

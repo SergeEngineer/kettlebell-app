@@ -85,12 +85,12 @@ def program(pid):
     return render_template("program.html", p=p, exercises=ex, partial=steps_partial(pid))
 
 
-@app.post("/programs/<int:pid>/delete")
+@app.delete("/programs/<int:pid>")
 def del_program(pid):
     db().execute("delete from steps where program_id=?", (pid,))
     db().execute("delete from programs where id=?", (pid,))
     db().commit()
-    return redirect("/")
+    return programs_partial()
 
 
 def save_gif(f):
