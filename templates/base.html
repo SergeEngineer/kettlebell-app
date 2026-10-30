@@ -65,10 +65,72 @@ function initWheels(root){
 const fmtTime = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 function toggleStep(row, ev){
   if (ev.target.closest('button')) return;
+  const sw = row.closest('.sw');
+  if (sw._dragged && Date.now() - sw._dragged < 400) return;   // a swipe, not a tap
+  if (sw.classList.contains('open')) { setX(sw, 0, true); return; }
   const f = row.closest('li').querySelector('.edit'), open = f.hidden;
   document.querySelectorAll('#steps .edit').forEach(x => x.hidden = true);
   f.hidden = !open;
   if (open) initWheels(f);
+}
+
+// ---- swipe left to delete (like iOS Mail) ----
+const OPEN_W = 88; let swipe = null;
+function setX(sw, x, anim){
+  const row = sw.querySelector('.row'), del = sw.querySelector('.del');
+  row.style.transition = anim ? 'transform .25s ease' : 'none';
+  del.style.transition = anim ? 'width .25s ease' : 'none';
+  row.style.transform = 'translateX(' + x + 'px)';
+  del.style.width = Math.max(0, -x) + 'px';
+  sw.classList.toggle('open', x < 0);
+}
+function closeSwipes(except){ document.querySelectorAll('.sw.open').forEach(sw => { if (sw !== except) setX(sw, 0, true); }); }
+function removeStep(sw){
+  const id = sw.closest('li').dataset.id, row = sw.querySelector('.row'), del = sw.querySelector('.del');
+  row.style.transition = 'transform .2s ease'; del.style.transition = 'width .2s ease';
+  row.style.transform = 'translateX(-100%)'; del.style.width = '100%';
+  setTimeout(() => htmx.ajax('DELETE', '/steps/' + id, {target: '#steps'}), 180);
+}
+document.addEventListener('pointerdown', e => {
+  if (e.target.closest('.del')) return;
+  const sw = e.target.closest('.sw');
+  closeSwipes(sw);
+  if (!sw || e.target.closest('button')) return;
+  swipe = {sw, id: e.pointerId, x0: e.clientX, y0: e.clientY, base: sw.classList.contains('open') ? -OPEN_W : 0, locked: null, x: 0};
+});
+document.addEventListener('pointermove', e => {
+  if (!swipe || e.pointerId !== swipe.id) return;
+  const dx = e.clientX - swipe.x0, dy = e.clientY - swipe.y0;
+  if (swipe.locked === null) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    swipe.locked = Math.abs(dx) > Math.abs(dy);
+    if (!swipe.locked) { swipe = null; return; }
+    try { swipe.sw.querySelector('.row').setPointerCapture(e.pointerId); } catch (_) {}
+  }
+  swipe.x = Math.min(0, swipe.base + dx);
+  setX(swipe.sw, swipe.x, false);
+});
+function endSwipe(e){
+  if (!swipe || e.pointerId !== swipe.id) return;
+  const s = swipe; swipe = null;
+  if (!s.locked) return;
+  s.sw._dragged = Date.now();
+  if (s.x < -s.sw.offsetWidth * 0.55) removeStep(s.sw);          // long swipe deletes right away
+  else if (s.x < -OPEN_W / 2) setX(s.sw, -OPEN_W, true);          // short swipe reveals the bin
+  else setX(s.sw, 0, true);
+}
+document.addEventListener('pointerup', endSwipe);
+document.addEventListener('pointercancel', endSwipe);
+
+// ---- keep bottom bars attached to the keyboard / bottom edge ----
+if (window.visualViewport) {
+  const vv = visualViewport, root = document.documentElement;
+  const upd = () => {
+    const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+    root.style.setProperty('--kb', kb + 'px');
+    root.classList.toggle('kb', kb > 120);
+  };
+  vv.addEventListener('resize', upd); vv.addEventListener('scroll', upd); upd();
 }
 function stepSaved(f){
   const li = f.closest('li'), s = (+f.elements.min.value) * 60 + (+f.elements.sec.value);
