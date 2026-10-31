@@ -5,14 +5,14 @@ A small web app for building kettlebell workouts and running them with a countdo
 ## What it does
 
 **Exercises**
-- Save an exercise as a name plus a GIF showing the movement.
+- Save an exercise as a name plus a GIF showing the movement. The GIF file is stored under the exercise's name (for example `Kettlebell Swing.gif`) and renamed when you rename the exercise.
 - Delete exercises you no longer need.
 
 **Workouts**
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
 - Reorder steps with the up and down buttons, and remove steps you don't want.
 - See the total workout time.
-- Rename a workout with the ✎ icon beside its title, and swipe a workout left on the home screen to delete it (with a confirmation). Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
+- Rename a workout with the ✎ icon beside its title, and swipe a workout left on the home screen to delete it. Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
 
 Example workout:
 

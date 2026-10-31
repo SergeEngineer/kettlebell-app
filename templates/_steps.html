@@ -5,7 +5,7 @@
   <li data-id="{{ s.id }}" data-seconds="{{ s.seconds }}">
     <div class="sw" data-kind="step">
       <div class="row tap" onclick="toggleStep(this, event)">
-        {% if s.gif %}<img class="thumb" src="/media/{{ s.gif }}" alt="" draggable="false">
+        {% if s.gif %}<img class="thumb" src="/media/{{ s.gif|urlencode }}" alt="" draggable="false">
         {% elif s.exercise_id %}<span class="thumb rest">{{ (s.name or '?')[:1]|upper }}</span>
         {% else %}<span class="thumb rest sm">REST</span>{% endif %}
         <span class="grow"><strong>{{ s.name or 'Rest' }}</strong><small class="tm">{{ s.seconds|fmt }}</small></span>

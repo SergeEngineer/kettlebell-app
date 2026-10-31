@@ -15,15 +15,7 @@
 <script src="/static/htmx.min.js"></script>
 </head>
 <body>
-<main>{% block body %}{% endblock %}</main>
-{% if tab %}
-<nav class="tabs">
-  <a href="/" class="{{ 'on' if tab=='w' }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 1.5M9.5 3h5"/></svg>Workouts</a>
-  <a href="/exercises" class="{{ 'on' if tab=='e' }}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="15" r="6.5"/><path d="M8.3 9.8C7 3.5 17 3.5 15.7 9.8"/></svg>Exercises</a>
-</nav>
-{% endif %}
+{% block page %}<main>{% block body %}{% endblock %}</main>{% endblock %}
 <script>
 // iOS-style scroll wheels for minutes / seconds
 const IH = 40;
@@ -87,7 +79,6 @@ function setX(sw, x, anim){
 function closeSwipes(except){ document.querySelectorAll('.sw.open').forEach(sw => { if (sw !== except) setX(sw, 0, true); }); }
 function removeSwipe(sw){
   const li = sw.closest('li'), id = li.dataset.id, program = sw.dataset.kind === 'program';
-  if (program && !confirm('Delete this workout and all its steps? This cannot be undone.')) { setX(sw, 0, true); return; }
   const row = sw.querySelector('.row'), del = sw.querySelector('.del');
   row.style.transition = 'transform .2s ease'; del.style.transition = 'width .2s ease';
   row.style.transform = 'translateX(-100%)'; del.style.width = '100%';
@@ -136,6 +127,8 @@ if (window.visualViewport) {
   const upd = () => {
     const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
     root.style.setProperty('--kb', kb + 'px');
+    root.style.setProperty('--vvh', vv.height + 'px');
+    root.style.setProperty('--vvt', vv.offsetTop + 'px');
   };
   vv.addEventListener('resize', upd); vv.addEventListener('scroll', upd); upd();
 }

@@ -1,10 +1,19 @@
 {% extends "base.html" %}
-{% block body %}
-<h1>Exercises</h1>
-<form class="group" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" hx-on::after-request="this.reset()">
-  <div class="row"><input name="name" placeholder="Exercise name" required autocomplete="off"></div>
-  <label class="row"><span class="grow">GIF</span><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg"></label>
-  <div class="row"><button class="blue wide">Save exercise</button></div>
-</form>
-<div id="list">{{ partial|safe }}</div>
+{% block page %}
+<div class="shell">
+  <div class="scroll"><div class="col">
+    <h1>Exercises</h1>
+    <div id="list">{{ partial|safe }}</div>
+  </div></div>
+  <form class="addbar ex" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" autocomplete="off"
+        hx-on::after-request="this.reset();document.getElementById('fname').textContent='Choose GIF'">
+    <input name="ex_title" type="text" placeholder="New exercise name" required autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+    <div class="exrow">
+      <label class="filebtn"><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg" hidden
+        onchange="document.getElementById('fname').textContent=this.files[0]?this.files[0].name:'Choose GIF'"><span id="fname">Choose GIF</span></label>
+      <button>Save exercise</button>
+    </div>
+  </form>
+  {% include "_tabs.html" %}
+</div>
 {% endblock %}

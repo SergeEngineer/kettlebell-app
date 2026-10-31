@@ -1,4 +1,5 @@
-import os, sqlite3, uuid
+import os, re, sqlite3, uuid
+from urllib.parse import quote
 from flask import Flask, render_template, request, redirect, g, abort, send_from_directory
 
 DATA = os.environ.get("DATA_DIR", "/data")
@@ -71,7 +72,7 @@ def index():
 
 @app.post("/programs")
 def add_program():
-    name = request.form.get("name", "").strip()
+    name = request.form.get("wk_title", "").strip()
     if name:
         db().execute("insert into programs(name) values(?)", (name,))
         db().commit()
@@ -93,11 +94,25 @@ def del_program(pid):
     return programs_partial()
 
 
-def save_gif(f):
+def sanitize(name):
+    """Exercise name -> safe file name (without extension)."""
+    return re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", name).strip(" .")[:100] or "exercise"
+
+
+def unique_name(base, ext, exclude=None):
+    fn, n = base + ext, 2
+    while os.path.exists(os.path.join(UPLOADS, fn)) and fn != exclude:
+        fn = f"{base} ({n}){ext}"
+        n += 1
+    return fn
+
+
+def save_gif(f, name):
+    """Save the upload using the exercise name as the file name."""
     if f and f.filename:
         ext = os.path.splitext(f.filename)[1].lower()
         if ext in ALLOWED:
-            fn = uuid.uuid4().hex + ext
+            fn = unique_name(sanitize(name), ext)
             f.save(os.path.join(UPLOADS, fn))
             return fn
     return None
@@ -111,11 +126,11 @@ def add_step(pid):
     if kind == "workout":
         sel = request.form.get("exercise", "")
         if sel == "new":
-            name = request.form.get("new_name", "").strip()
+            name = request.form.get("ex_new_title", "").strip()
             if not name:
                 return steps_partial(pid)
             cur = db().execute("insert into exercises(name,gif) values(?,?)",
-                               (name, save_gif(request.files.get("gif"))))
+                               (name, save_gif(request.files.get("gif"), name)))
             ex_id = cur.lastrowid
         elif sel.isdigit():
             ex_id = int(sel)
@@ -154,7 +169,7 @@ def del_step(sid):
 
 @app.post("/programs/<int:pid>/rename")
 def rename_program(pid):
-    name = request.form.get("wname", "").strip()
+    name = request.form.get("wk_rename", "").strip()
     if name:
         db().execute("update programs set name=? where id=?", (name, pid))
         db().commit()
@@ -178,25 +193,25 @@ def exercises():
 
 @app.post("/exercises")
 def add_exercise():
-    name = request.form.get("name", "").strip()
-    f = request.files.get("gif")
-    fn = None
-    if f and f.filename:
-        ext = os.path.splitext(f.filename)[1].lower()
-        if ext in ALLOWED:
-            fn = uuid.uuid4().hex + ext
-            f.save(os.path.join(UPLOADS, fn))
+    name = request.form.get("ex_title", "").strip()
     if name:
-        db().execute("insert into exercises(name,gif) values(?,?)", (name, fn))
+        db().execute("insert into exercises(name,gif) values(?,?)", (name, save_gif(request.files.get("gif"), name)))
         db().commit()
     return exercises_partial()
 
 
 @app.post("/exercises/<int:eid>")
 def rename_exercise(eid):
-    name = request.form.get("name", "").strip()
-    if name:
-        db().execute("update exercises set name=? where id=?", (name, eid))
+    name = request.form.get("ex_title", "").strip()
+    row = db().execute("select gif from exercises where id=?", (eid,)).fetchone()
+    if name and row:
+        gif = row["gif"]
+        if gif:   # keep the file name in step with the exercise name
+            new = unique_name(sanitize(name), os.path.splitext(gif)[1], exclude=gif)
+            if new != gif and os.path.exists(os.path.join(UPLOADS, gif)):
+                os.rename(os.path.join(UPLOADS, gif), os.path.join(UPLOADS, new))
+                gif = new
+        db().execute("update exercises set name=?, gif=? where id=?", (name, gif, eid))
         db().commit()
     return exercises_partial()
 
@@ -217,7 +232,7 @@ def del_exercise(eid):
 
 @app.get("/media/<path:f>")
 def media(f):
-    return send_from_directory(UPLOADS, f, max_age=86400)
+    return send_from_directory(UPLOADS, f, max_age=0)
 
 
 @app.get("/manifest.webmanifest")
@@ -230,7 +245,7 @@ def manifest():
 def run(pid):
     p = db().execute("select * from programs where id=?", (pid,)).fetchone() or abort(404)
     steps = [{"name": s["name"] or "Rest", "seconds": s["seconds"],
-              "gif": f"/media/{s['gif']}" if s["gif"] else None,
+              "gif": "/media/" + quote(s["gif"]) if s["gif"] else None,
               "kind": "ex" if s["exercise_id"] else "rest"} for s in get_steps(pid)]
     return render_template("run.html", p=p, steps=steps)
 

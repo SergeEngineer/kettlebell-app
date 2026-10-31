@@ -138,3 +138,16 @@ body:has(.addbar) main{padding-bottom:calc(var(--tabh) + 84px + env(safe-area-in
 
 a.row{text-decoration:none}
 .sw[data-kind=program]>.row{padding:13px 16px}
+
+/* tab pages: list scrolls on top, input bar + tab bar pinned at the bottom (follows the keyboard) */
+body:has(.shell){overflow:hidden}
+.shell{position:fixed;left:0;top:0;width:100%;height:100dvh;display:flex;flex-direction:column;background:#000;overflow:hidden}
+html.typing .shell{height:var(--vvh);transform:translateY(var(--vvt))}
+.shell .scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:calc(env(safe-area-inset-top) + 12px) 16px 16px}
+.shell .col{max-width:560px;margin:0 auto}
+.shell .addbar{position:static;flex:none}
+.shell .tabs{position:static;flex:none}
+.addbar.ex{flex-direction:column;align-items:stretch;gap:8px}
+.addbar.ex input[type=text]{flex:none}
+.exrow{display:flex;gap:10px;align-items:center}
+.filebtn{display:block;flex:1;min-width:0;background:#1c1c1c;border-radius:18px;padding:10px 14px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}

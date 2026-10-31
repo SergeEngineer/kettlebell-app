@@ -1,9 +1,14 @@
 {% extends "base.html" %}
-{% block body %}
-<h1>Workouts</h1>
-<div id="list">{{ partial|safe }}</div>
-<form class="addbar" hx-post="/programs" hx-target="#list" hx-on::after-request="this.reset()">
-  <input name="name" placeholder="New workout name" required autocomplete="off" enterkeyhint="done">
-  <button>Add</button>
-</form>
+{% block page %}
+<div class="shell">
+  <div class="scroll"><div class="col">
+    <h1>Workouts</h1>
+    <div id="list">{{ partial|safe }}</div>
+  </div></div>
+  <form class="addbar" hx-post="/programs" hx-target="#list" hx-on::after-request="this.reset()" autocomplete="off">
+    <input name="wk_title" type="text" placeholder="New workout name" required autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+    <button>Add</button>
+  </form>
+  {% include "_tabs.html" %}
+</div>
 {% endblock %}
