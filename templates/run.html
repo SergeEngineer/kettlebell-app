@@ -74,7 +74,7 @@ function beep(f=880, d=.12){ if(!ctx) return; const o=ctx.createOscillator(), g=
   o.frequency.value=f; o.connect(g); g.connect(ctx.destination); g.gain.value=.25;
   o.start(); o.stop(ctx.currentTime+d); }
 function load(k){
-  if(k>=seq.length){ finish(); return; }
+  if(k>=seq.length){ finish(false); return; }
   i=Math.max(0,k); const s=seq[i], nx=seq[i+1];
   total=remain=s.seconds*1000; end=Date.now()+remain; lastSec=-1;
   document.body.dataset.kind=s.kind;
@@ -91,9 +91,16 @@ function load(k){
 function draw(){ $('time').textContent=fmt(Math.ceil(remain/1000));
   $('arc').style.strokeDashoffset = C*(1-remain/total); }
 function setPaused(p){ paused=p; $('pp').innerHTML=p?PLAY:PAUSE; if(!p) end=Date.now()+remain; }
-function finish(){ paused=true; $('done').hidden=false; exitFS(); beep(1320,.5); releaseAwake(); }
+let logged=false;
+function logCompletion(){          // only a workout that ran all the way to the end counts for the calendar
+  if(logged || !STEPS.some(s=>s.kind==='ex')) return; logged=true;
+  const d=new Date(), day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  fetch('/run/{{ p.id }}/complete',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'day='+day,keepalive:true}).catch(()=>{});
+}
+function finish(natural){ paused=true; $('done').querySelector('h1').textContent = natural ? 'Workout complete' : 'Workout ended';
+  $('done').hidden=false; exitFS(); beep(1320,.5); releaseAwake(); if(natural) logCompletion(); }
 setInterval(()=>{ if(paused) return; remain=end-Date.now();
-  if(remain<=0){ load(i+1); return; }
+  if(remain<=0){ if(i+1>=seq.length) finish(true); else load(i+1); return; }
   const sec=Math.ceil(remain/1000); if(sec<=3 && sec!==lastSec) beep(880); lastSec=sec; draw(); }, 100);
 
 $('begin').onclick = async ()=>{ $('begin').hidden=true; enterFS();

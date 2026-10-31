@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block page %}
+<div class="shell">
+  <div class="scroll"><div class="col">
+    <h1>Calendar</h1>
+    <p class="stats" id="stats"></p>
+    <div class="heatscroll" id="hs"><div class="heat">
+      <div class="months" id="months"></div>
+      <div class="cells" id="cells"></div>
+    </div></div>
+    <p class="daydetail" id="daydetail">Tap a day to see what you completed.</p>
+    <h2>Recent</h2>
+    {% if recent %}
+    <ul class="group">{% for r in recent %}<li class="row"><span class="grow"><strong>{{ r.name }}</strong></span><small>{{ r.day }}</small></li>{% endfor %}</ul>
+    {% else %}<p class="empty">No completed workouts yet. Finish a workout from start to finish and its day turns green.</p>{% endif %}
+  </div></div>
+  {% include "_tabs.html" %}
+</div>
+<script>
+const DONE = {{ done|tojson }};
+const pad = n => String(n).padStart(2, '0');
+const key = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const WEEKS = 53, today = new Date(); today.setHours(0, 0, 0, 0);
+const start = new Date(today); start.setDate(today.getDate() - today.getDay() - (WEEKS - 1) * 7);
+const cells = document.getElementById('cells'), months = document.getElementById('months');
+let total = 0, active = 0;
+for (let w = 0; w < WEEKS; w++) {
+  for (let dow = 0; dow < 7; dow++) {
+    const d = new Date(start); d.setDate(start.getDate() + w * 7 + dow);
+    const c = document.createElement('div');
+    if (d > today) { c.style.visibility = 'hidden'; cells.appendChild(c); continue; }
+    const k = key(d), names = DONE[k];
+    c.className = 'cell' + (names ? (names.length > 1 ? ' on on2' : ' on') : '') + (d.getTime() === today.getTime() ? ' today' : '');
+    c.dataset.day = k;
+    if (names) { total += names.length; active++; }
+    cells.appendChild(c);
+    if (d.getDate() === 1) { const m = document.createElement('span'); m.textContent = MON[d.getMonth()]; m.style.gridColumn = (w + 1); months.appendChild(m); }
+  }
+}
+let streak = 0; const cur = new Date(today);
+if (!DONE[key(cur)]) cur.setDate(cur.getDate() - 1);
+while (DONE[key(cur)]) { streak++; cur.setDate(cur.getDate() - 1); }
+document.getElementById('stats').textContent = total + ' completed · ' + active + ' active days · ' + streak + ' day streak';
+cells.addEventListener('click', e => {
+  const c = e.target.closest('.cell'); if (!c) return;
+  const names = DONE[c.dataset.day], dt = new Date(c.dataset.day + 'T00:00:00');
+  document.getElementById('daydetail').textContent =
+    dt.toLocaleDateString(undefined, {weekday: 'short', month: 'short', day: 'numeric'}) + ' — ' + (names ? names.join(', ') : 'no workout completed');
+});
+document.getElementById('hs').scrollLeft = 1e6;   // start at today (right end)
+</script>
+{% endblock %}

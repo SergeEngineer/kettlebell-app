@@ -1,4 +1,5 @@
 import os, re, sqlite3, uuid
+from datetime import date
 from urllib.parse import quote
 from flask import Flask, render_template, request, redirect, g, abort, send_from_directory
 
@@ -29,6 +30,7 @@ with sqlite3.connect(os.path.join(DATA, "app.db")) as c:
     c.executescript("""
     create table if not exists exercises(id integer primary key, name text not null, gif text);
     create table if not exists programs(id integer primary key, name text not null);
+    create table if not exists completions(id integer primary key, program_id integer, name text, day text not null, ts text);
     create table if not exists steps(id integer primary key, program_id integer not null,
         pos integer not null, exercise_id integer, seconds integer not null, label text);
     """)
@@ -238,6 +240,30 @@ def media(f):
 @app.get("/manifest.webmanifest")
 def manifest():
     return send_from_directory(app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json")
+
+
+# ---------- calendar ----------
+@app.get("/calendar")
+def calendar():
+    rows = db().execute("select day, name from completions order by id").fetchall()
+    done = {}
+    for row in rows:
+        done.setdefault(row["day"], []).append(row["name"])
+    recent = db().execute("select day, name from completions order by id desc limit 10").fetchall()
+    return render_template("calendar.html", tab="c", done=done, recent=recent)
+
+
+@app.post("/run/<int:pid>/complete")
+def complete(pid):
+    """Called by the player only when a workout ran from start to finish."""
+    p = db().execute("select name from programs where id=?", (pid,)).fetchone() or abort(404)
+    try:
+        day = date.fromisoformat(request.form.get("day", "")).isoformat()
+    except ValueError:
+        abort(400)
+    db().execute("insert into completions(program_id,name,day,ts) values(?,?,?,datetime('now'))", (pid, p["name"], day))
+    db().commit()
+    return "", 204
 
 
 # ---------- player ----------

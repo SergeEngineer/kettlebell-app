@@ -33,6 +33,11 @@ Example workout:
 - Beeps in the last 3 seconds and at every change. Vibrates on devices that support it.
 - Keeps the screen awake while running (see notes below).
 
+**Calendar**
+- A contribution-style calendar (last 12 months). A day turns green when you finish a workout from start to finish; two or more finished workouts in a day show a brighter green.
+- A workout only counts when its last step's timer runs out. Workouts you leave early, or skip through to the end, are not counted.
+- Tap a day to see which workouts you completed. The tab also shows your totals and current streak.
+
 ## Tech stack
 
 | Part | Choice |

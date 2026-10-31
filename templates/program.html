@@ -8,7 +8,7 @@
 </div>
 <form id="tform" class="group" hidden hx-post="/programs/{{ p.id }}/rename" hx-swap="none"
       hx-on::after-request="const v=this.wk_rename.value.trim(); if(v) document.getElementById('ttl').textContent=v; this.hidden=true; document.querySelector('.titlebar').hidden=false">
-  <div class="row"><input name="wk_rename" value="{{ p.name }}" required autocomplete="off" autocorrect="off" spellcheck="false">
+  <div class="row"><input name="wk_rename" value="{{ p.name }}" required autocomplete="on" autocorrect="on" spellcheck="true">
     <button type="button" class="dimbtn" onclick="this.closest('form').hidden=true;document.querySelector('.titlebar').hidden=false">Cancel</button>
     <button class="blue">Save</button></div>
 </form>
@@ -29,7 +29,7 @@
         <option value="new" {% if not exercises %}selected{% endif %}>＋ New exercise (upload GIF)</option>
       </select></label>
     <div class="nw">
-      <div class="row"><input name="ex_new_title" placeholder="Exercise name" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+      <div class="row"><input name="ex_new_title" placeholder="Exercise name" autocomplete="on" autocorrect="on" spellcheck="true"></div>
       <label class="row"><span class="grow">GIF</span><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg"></label>
     </div>
   </div>

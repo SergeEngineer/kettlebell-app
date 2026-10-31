@@ -5,8 +5,8 @@
     <h1>Workouts</h1>
     <div id="list">{{ partial|safe }}</div>
   </div></div>
-  <form class="addbar" hx-post="/programs" hx-target="#list" hx-on::after-request="this.reset()" autocomplete="off">
-    <input name="wk_title" type="text" placeholder="New workout name" required autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+  <form class="addbar" hx-post="/programs" hx-target="#list" hx-on::after-request="this.reset()" autocomplete="on">
+    <input name="wk_title" type="text" placeholder="New workout name" required autocomplete="on" autocorrect="on" autocapitalize="words" spellcheck="true" enterkeyhint="done">
     <button>Add</button>
   </form>
   {% include "_tabs.html" %}

@@ -78,11 +78,12 @@ function setX(sw, x, anim){
 }
 function closeSwipes(except){ document.querySelectorAll('.sw.open').forEach(sw => { if (sw !== except) setX(sw, 0, true); }); }
 function removeSwipe(sw){
-  const li = sw.closest('li'), id = li.dataset.id, program = sw.dataset.kind === 'program';
+  const li = sw.closest('li'), kind = sw.dataset.kind, id = li.dataset.id,
+        url = {program: '/programs/', exercise: '/exercises/', step: '/steps/'}[kind] + id, target = kind === 'step' ? '#steps' : '#list';
   const row = sw.querySelector('.row'), del = sw.querySelector('.del');
   row.style.transition = 'transform .2s ease'; del.style.transition = 'width .2s ease';
   row.style.transform = 'translateX(-100%)'; del.style.width = '100%';
-  setTimeout(() => htmx.ajax('DELETE', (program ? '/programs/' : '/steps/') + id, {target: program ? '#list' : '#steps'}), 180);
+  setTimeout(() => htmx.ajax('DELETE', url, {target}), 180);
 }
 function tapProgram(a, ev){
   const sw = a.closest('.sw');

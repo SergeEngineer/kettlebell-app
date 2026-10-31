@@ -5,9 +5,9 @@
     <h1>Exercises</h1>
     <div id="list">{{ partial|safe }}</div>
   </div></div>
-  <form class="addbar ex" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" autocomplete="off"
+  <form class="addbar ex" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" autocomplete="on"
         hx-on::after-request="this.reset();document.getElementById('fname').textContent='Choose GIF'">
-    <input name="ex_title" type="text" placeholder="New exercise name" required autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+    <input name="ex_title" type="text" placeholder="New exercise name" required autocomplete="on" autocorrect="on" autocapitalize="words" spellcheck="true" enterkeyhint="done">
     <div class="exrow">
       <label class="filebtn"><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg" hidden
         onchange="document.getElementById('fname').textContent=this.files[0]?this.files[0].name:'Choose GIF'"><span id="fname">Choose GIF</span></label>
