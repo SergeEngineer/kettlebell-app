@@ -23,11 +23,30 @@
     <label><input type="radio" name="kind" value="rest">Rest</label>
   </div>
   <div class="wk">
-    <label class="row"><span class="grow">Exercise</span>
-      <select name="exercise">
-        {% for e in exercises %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
-        <option value="new" {% if not exercises %}selected{% endif %}>＋ New exercise (upload GIF)</option>
-      </select></label>
+    {% if categories %}
+    <div class="catfilter" role="group" aria-label="Filter exercises by category">
+      <button type="button" class="chip on" data-cat="all">All</button>
+      {% for c in categories %}<button type="button" class="chip" data-cat="{{ c.id }}">{{ c.name }}</button>{% endfor %}
+      {% if has_uncategorized %}<button type="button" class="chip" data-cat="none">Uncategorized</button>{% endif %}
+    </div>
+    {% endif %}
+    <div class="picklist">
+      {% for e in exercises %}
+      <label class="pick" data-cat="{{ e.category_id or 'none' }}">
+        <input type="radio" name="exercise" value="{{ e.id }}">
+        {% if e.gif %}<img class="thumb" src="/media/{{ e.gif|urlencode }}" alt="" draggable="false">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
+        <span class="grow"><strong>{{ e.name }}</strong><small>{{ e.category or 'Uncategorized' }}</small></span>
+        <span class="tick" aria-hidden="true">✓</span>
+      </label>
+      {% endfor %}
+      <p class="empty noex" hidden>No exercises in this category.</p>
+    </div>
+    <label class="pick newpick">
+      <input type="radio" name="exercise" value="new" {% if not exercises %}checked{% endif %}>
+      <span class="thumb rest">＋</span>
+      <span class="grow"><strong>New exercise</strong><small>Upload a GIF</small></span>
+      <span class="tick" aria-hidden="true">✓</span>
+    </label>
     <div class="nw">
       <div class="row"><input name="ex_new_title" placeholder="Exercise name" autocomplete="on" autocorrect="on" spellcheck="true"></div>
       <label class="row"><span class="grow">GIF</span><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg"></label>
@@ -42,12 +61,23 @@
 function ui(f){
   const w = f.kind.value === 'workout';
   f.querySelector('.wk').hidden = !w;
+  f.querySelectorAll('input[name=exercise]').forEach(r => r.required = w);
   const n = w && f.exercise.value === 'new';
   f.querySelector('.nw').hidden = !n;
   f['ex_new_title'].required = n;
 }
+function filterExercises(f, cat){
+  f.querySelectorAll('.picklist .pick').forEach(p => p.hidden = cat !== 'all' && p.dataset.cat !== cat);
+  f.querySelectorAll('.catfilter .chip').forEach(b => b.classList.toggle('on', b.dataset.cat === cat));
+  const any = [...f.querySelectorAll('.picklist .pick')].some(p => !p.hidden);
+  const noex = f.querySelector('.noex');
+  if (noex) noex.hidden = any;
+  const checked = f.querySelector('.picklist input:checked');
+  if (checked && checked.closest('.pick').hidden) { checked.checked = false; ui(f); }
+}
 const f = document.getElementById('addstep');
 f.addEventListener('change', () => ui(f));
+f.querySelectorAll('.catfilter .chip').forEach(b => b.addEventListener('click', () => filterExercises(f, b.dataset.cat)));
 ui(f);
 </script>
 {% endblock %}

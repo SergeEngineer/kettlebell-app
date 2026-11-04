@@ -1,7 +1,7 @@
 import os, re, sqlite3, uuid
 from datetime import date
 from urllib.parse import quote
-from flask import Flask, render_template, request, redirect, g, abort, send_from_directory
+from flask import Flask, render_template, request, redirect, g, abort, send_from_directory, make_response
 
 DATA = os.environ.get("DATA_DIR", "/data")
 UPLOADS = os.path.join(DATA, "uploads")
@@ -29,6 +29,7 @@ def close_db(_):
 with sqlite3.connect(os.path.join(DATA, "app.db")) as c:
     c.executescript("""
     create table if not exists exercises(id integer primary key, name text not null, gif text);
+    create table if not exists categories(id integer primary key, name text not null collate nocase unique);
     create table if not exists programs(id integer primary key, name text not null);
     create table if not exists completions(id integer primary key, program_id integer, name text, day text not null, ts text);
     create table if not exists steps(id integer primary key, program_id integer not null,
@@ -36,6 +37,8 @@ with sqlite3.connect(os.path.join(DATA, "app.db")) as c:
     """)
     if "label" not in [row[1] for row in c.execute("pragma table_info(steps)")]:
         c.execute("alter table steps add column label text")
+    if "category_id" not in [row[1] for row in c.execute("pragma table_info(exercises)")]:
+        c.execute("alter table exercises add column category_id integer")
 
 
 @app.template_filter("fmt")
@@ -51,8 +54,11 @@ def programs_partial():
 
 
 def exercises_partial():
-    rows = db().execute("select * from exercises order by name collate nocase").fetchall()
-    return render_template("_exercises.html", exercises=rows)
+    rows = db().execute("""select e.*, c.name category from exercises e
+        left join categories c on c.id=e.category_id
+        order by e.name collate nocase""").fetchall()
+    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
+    return render_template("_exercises.html", exercises=rows, categories=cats)
 
 
 def get_steps(pid):
@@ -84,8 +90,13 @@ def add_program():
 @app.get("/programs/<int:pid>")
 def program(pid):
     p = db().execute("select * from programs where id=?", (pid,)).fetchone() or abort(404)
-    ex = db().execute("select * from exercises order by name collate nocase").fetchall()
-    return render_template("program.html", p=p, exercises=ex, partial=steps_partial(pid))
+    ex = db().execute("""select e.*, c.name category from exercises e
+        left join categories c on c.id=e.category_id
+        order by e.name collate nocase""").fetchall()
+    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
+    uncategorized = db().execute("select exists(select 1 from exercises where category_id is null)").fetchone()[0]
+    return render_template("program.html", p=p, exercises=ex, categories=cats,
+                           has_uncategorized=bool(uncategorized), partial=steps_partial(pid))
 
 
 @app.delete("/programs/<int:pid>")
@@ -101,23 +112,67 @@ def sanitize(name):
     return re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", name).strip(" .")[:100] or "exercise"
 
 
-def unique_name(base, ext, exclude=None):
+def category_folder(name):
+    """Folder used to store a category's GIFs, e.g. data/uploads/Kettlebell/."""
+    return os.path.join(UPLOADS, sanitize(name)) if name else UPLOADS
+
+
+def rel_upload_path(path):
+    return os.path.relpath(path, UPLOADS).replace(os.sep, "/")
+
+
+def unique_name(base, ext, exclude=None, folder=None):
+    folder = folder or UPLOADS
     fn, n = base + ext, 2
-    while os.path.exists(os.path.join(UPLOADS, fn)) and fn != exclude:
+    while os.path.exists(os.path.join(folder, fn)) and os.path.join(folder, fn) != exclude:
         fn = f"{base} ({n}){ext}"
         n += 1
     return fn
 
 
-def save_gif(f, name):
-    """Save the upload using the exercise name as the file name."""
+def save_gif(f, name, category=None):
+    """Save the upload in its category folder, using the exercise name as the file name."""
     if f and f.filename:
         ext = os.path.splitext(f.filename)[1].lower()
         if ext in ALLOWED:
-            fn = unique_name(sanitize(name), ext)
-            f.save(os.path.join(UPLOADS, fn))
-            return fn
+            folder = category_folder(category)
+            os.makedirs(folder, exist_ok=True)
+            fn = unique_name(sanitize(name), ext, folder=folder)
+            f.save(os.path.join(folder, fn))
+            return rel_upload_path(os.path.join(folder, fn))
     return None
+
+
+def ensure_category(name):
+    """Find or create a category and make sure its upload folder exists."""
+    name = " ".join(name.split())
+    if not name:
+        return None, False
+    row = db().execute("select id, name from categories where name=? collate nocase", (name,)).fetchone()
+    if row:
+        cid, name, created = row["id"], row["name"], False
+    else:
+        cid, created = db().execute("insert into categories(name) values(?)", (name,)).lastrowid, True
+    os.makedirs(category_folder(name), exist_ok=True)
+    return cid, created
+
+
+def category_from_form(form):
+    """Resolve the category select (existing id or a new category name)."""
+    sel = form.get("category", "").strip()
+    if sel == "new":
+        return ensure_category(form.get("ex_category_new", "").strip())
+    if sel.isdigit():
+        row = db().execute("select id from categories where id=?", (int(sel),)).fetchone()
+        return (row["id"], False) if row else (None, False)
+    return None, False
+
+
+def category_name(cid):
+    if cid is None:
+        return None
+    row = db().execute("select name from categories where id=?", (cid,)).fetchone()
+    return row["name"] if row else None
 
 
 @app.post("/programs/<int:pid>/steps")
@@ -190,32 +245,50 @@ def edit_step(sid):
 # ---------- exercises ----------
 @app.get("/exercises")
 def exercises():
-    return render_template("exercises.html", tab="e", partial=exercises_partial())
+    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
+    return render_template("exercises.html", tab="e", partial=exercises_partial(), categories=cats)
 
 
 @app.post("/exercises")
 def add_exercise():
     name = request.form.get("ex_title", "").strip()
     if name:
-        db().execute("insert into exercises(name,gif) values(?,?)", (name, save_gif(request.files.get("gif"), name)))
+        cid, created = category_from_form(request.form)
+        gif = save_gif(request.files.get("gif"), name, category_name(cid))
+        db().execute("insert into exercises(name,gif,category_id) values(?,?,?)", (name, gif, cid))
         db().commit()
+        resp = make_response(exercises_partial())
+        if created:   # refresh so the new category appears in the pickers outside #list
+            resp.headers["HX-Refresh"] = "true"
+        return resp
     return exercises_partial()
 
 
 @app.post("/exercises/<int:eid>")
 def rename_exercise(eid):
     name = request.form.get("ex_title", "").strip()
-    row = db().execute("select gif from exercises where id=?", (eid,)).fetchone()
-    if name and row:
-        gif = row["gif"]
-        if gif:   # keep the file name in step with the exercise name
-            new = unique_name(sanitize(name), os.path.splitext(gif)[1], exclude=gif)
-            if new != gif and os.path.exists(os.path.join(UPLOADS, gif)):
-                os.rename(os.path.join(UPLOADS, gif), os.path.join(UPLOADS, new))
-                gif = new
-        db().execute("update exercises set name=?, gif=? where id=?", (name, gif, eid))
-        db().commit()
-    return exercises_partial()
+    row = db().execute("select * from exercises where id=?", (eid,)).fetchone()
+    if not (name and row):
+        return exercises_partial()
+    cid, created = category_from_form(request.form)
+    gif = row["gif"]
+    if gif:
+        ext = os.path.splitext(gif)[1]
+        old = os.path.join(UPLOADS, gif)
+        folder = category_folder(category_name(cid))
+        target = os.path.join(folder, sanitize(name) + ext)
+        if os.path.normcase(os.path.normpath(old)) != os.path.normcase(os.path.normpath(target)):
+            os.makedirs(folder, exist_ok=True)
+            target = os.path.join(folder, unique_name(sanitize(name), ext, folder=folder))
+            if os.path.exists(old):   # keep the GIF name in step with the exercise name and category
+                os.replace(old, target)
+                gif = rel_upload_path(target)
+    db().execute("update exercises set name=?, gif=?, category_id=? where id=?", (name, gif, cid, eid))
+    db().commit()
+    resp = make_response(exercises_partial())
+    if created:
+        resp.headers["HX-Refresh"] = "true"
+    return resp
 
 
 @app.delete("/exercises/<int:eid>")

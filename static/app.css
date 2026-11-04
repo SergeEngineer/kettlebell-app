@@ -149,7 +149,10 @@ html.typing .shell{bottom:auto;height:var(--vvh);transform:translateY(var(--vvt)
 .shell .tabs{position:static;flex:none}
 .addbar.ex{flex-direction:column;align-items:stretch;gap:8px}
 .addbar.ex input[type=text]{flex:none}
+.addbar.ex .exrow input[type=text]{flex:1;min-width:0}
 .exrow{display:flex;gap:10px;align-items:center}
+.exrow select{flex:1;min-width:0;max-width:none;background:#1c1c1c;border-radius:18px;padding:10px 14px;font-size:17px;text-align:left}
+.edit select{max-width:100%}
 .filebtn{display:block;flex:1;min-width:0;background:#1c1c1c;border-radius:18px;padding:10px 14px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 
 body:not(:has(.shell)){min-height:calc(100dvh + 1px)}
@@ -168,3 +171,20 @@ body:not(:has(.shell)){min-height:calc(100dvh + 1px)}
 .cell.on2{background:#2fd281}
 .cell.today{outline:1.5px solid var(--y);outline-offset:1px}
 .daydetail{color:var(--y);font-size:15px;margin:12px 4px 0;min-height:20px}
+
+/* exercise picker in the add-step form */
+.catfilter{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:10px 14px;border-top:.5px solid var(--sep)}
+.catfilter::-webkit-scrollbar{display:none}
+.chip{flex:none;background:#222;color:var(--dim);border-radius:14px;padding:6px 12px;font-size:14px}
+.chip.on{background:var(--y);color:#000;font-weight:600}
+.picklist{max-height:340px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-top:.5px solid var(--sep)}
+.pick{display:flex;align-items:center;gap:12px;padding:8px 16px;border-top:.5px solid var(--sep);cursor:pointer;color:var(--y)}
+.picklist .pick:first-child{border-top:0}
+.pick:has(input:checked){background:rgba(255,214,10,.1)}
+.pick .thumb{width:58px;height:58px}
+.pick .grow strong{font-weight:500}
+.pick input{position:absolute;opacity:0;pointer-events:none}
+.pick .tick{width:22px;height:22px;border-radius:11px;border:1.5px solid var(--sep);display:grid;place-items:center;font-size:13px;color:transparent;flex:none}
+.pick:has(input:checked) .tick{background:var(--y);border-color:var(--y);color:#000}
+.pick:has(input:focus-visible){outline:2px solid var(--y);outline-offset:-2px}
+.newpick{border-top:.5px solid var(--sep)}

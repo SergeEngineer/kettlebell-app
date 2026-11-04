@@ -6,8 +6,16 @@
     <div id="list">{{ partial|safe }}</div>
   </div></div>
   <form class="addbar ex" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" autocomplete="on"
-        hx-on::after-request="this.reset();document.getElementById('fname').textContent='Choose GIF'">
+        hx-on::after-request="this.reset();const c=this.ex_category_new;c.hidden=true;c.required=false;document.getElementById('fname').textContent='Choose GIF'">
     <input name="ex_title" type="text" placeholder="New exercise name" required autocomplete="on" autocorrect="on" autocapitalize="words" spellcheck="true" enterkeyhint="done">
+    <div class="exrow">
+      <select name="category" onchange="const c=this.form.ex_category_new;c.hidden=this.value!=='new';c.required=!c.hidden;if(!c.hidden)c.focus()">
+        <option value="">No category</option>
+        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        <option value="new">＋ New category…</option>
+      </select>
+      <input name="ex_category_new" type="text" placeholder="New category" hidden autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="true">
+    </div>
     <div class="exrow">
       <label class="filebtn"><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg" hidden
         onchange="document.getElementById('fname').textContent=this.files[0]?this.files[0].name:'Choose GIF'"><span id="fname">Choose GIF</span></label>

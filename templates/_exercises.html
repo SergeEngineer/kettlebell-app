@@ -5,13 +5,21 @@
     <div class="sw" data-kind="exercise">
       <div class="row tap">
         {% if e.gif %}<img class="thumb" src="/media/{{ e.gif|urlencode }}" alt="" draggable="false">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
-        <span class="grow"><strong>{{ e.name }}</strong></span>
+        <span class="grow"><strong>{{ e.name }}</strong>{% if e.category %}<small>{{ e.category }}</small>{% endif %}</span>
         <button class="icon" aria-label="Rename" onclick="const f=this.closest('li').querySelector('.edit');f.hidden=!f.hidden">✎</button>
       </div>
       <button class="del" aria-label="Delete exercise" onclick="removeSwipe(this.closest('.sw'))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
     </div>
     <form class="edit" hidden hx-post="/exercises/{{ e.id }}" hx-target="#list">
       <div class="row"><input name="ex_title" value="{{ e.name }}" required autocomplete="on" autocorrect="on" spellcheck="true"></div>
+      <div class="row">
+        <select name="category" onchange="const r=this.form.querySelector('.newcat');r.hidden=this.value!=='new';r.querySelector('input').required=!r.hidden;if(!r.hidden)r.querySelector('input').focus()">
+          <option value="">No category</option>
+          {% for c in categories %}<option value="{{ c.id }}" {% if c.id == e.category_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+          <option value="new">＋ New category…</option>
+        </select>
+      </div>
+      <div class="row newcat" hidden><input name="ex_category_new" placeholder="New category" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="true"></div>
       <div class="row btns"><button type="button" class="dimbtn" onclick="this.closest('form').hidden=true">Cancel</button><button class="blue">Save</button></div>
     </form>
   </li>

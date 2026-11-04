@@ -5,11 +5,13 @@ A small web app for building kettlebell workouts and running them with a countdo
 ## What it does
 
 **Exercises**
-- Save an exercise as a name plus a GIF showing the movement. The GIF file is stored under the exercise's name (for example `Kettlebell Swing.gif`) and renamed when you rename the exercise.
+- Save an exercise as a name, a category and a GIF showing the movement. Pick an existing category or create a new one while saving. Each category gets its own folder under `/data/uploads/` (for example `/data/uploads/Kettlebell/Kettlebell Swing.gif`); GIFs are renamed when you rename the exercise.
+- Change an exercise's category with ✎; its GIF moves to the new category folder.
 - Delete exercises you no longer need.
 
 **Workouts**
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
+- When adding an exercise step, filter the picker by category and choose from animated GIF thumbnails.
 - Reorder steps with the up and down buttons, and remove steps you don't want.
 - See the total workout time.
 - Rename a workout with the ✎ icon beside its title, and swipe a workout left on the home screen to delete it. Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
@@ -112,7 +114,7 @@ To update after changing code: rebuild the image and recreate the container. You
 - **Full screen on iPhone:** Safari on iPhone does not allow websites to hide the address bar. For a true full-screen player, use **Share → Add to Home Screen** and open the app from the Home Screen icon. On Android, iPad and desktop, tapping "Tap to begin" enters full screen automatically, and "Done" exits it.
 - **Sound on iPhone:** Safari only allows sound after a tap, so the player starts with a "Tap to begin" screen.
 - **No login:** the app has no authentication. Keep it on your home network or behind a VPN.
-- **GIF uploads:** `.gif`, `.webp`, `.png` and `.jpg` files up to 30 MB.
+- **GIF uploads:** `.gif`, `.webp`, `.png` and `.jpg` files up to 30 MB. Files are stored in `/data/uploads/<Category>/` and the folder is created automatically when you add a category.
 
 ## Configuration
 
