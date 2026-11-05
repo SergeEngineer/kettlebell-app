@@ -173,6 +173,50 @@ def video_cache_path(token, suffix):
     return os.path.join(VIDEO_CACHE, token + suffix)
 
 
+def probe_video(path):
+    """Return (duration, fps) for a video file using ffprobe, or (0.0, 30.0) on failure."""
+    duration, fps = 0.0, 30.0
+    if not (path and os.path.isfile(path) and shutil.which("ffprobe")):
+        return duration, fps
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration:stream=r_frame_rate,avg_frame_rate",
+            "-select_streams", "v:0",
+            "-of", "json", path,
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        data = json.loads(res.stdout) if res.stdout else {}
+        format_duration = data.get("format", {}).get("duration")
+        if format_duration:
+            duration = float(format_duration)
+        streams = data.get("streams", [])
+        if streams:
+            stream = streams[0]
+            if not duration and stream.get("duration"):
+                duration = float(stream["duration"])
+            for key in ("r_frame_rate", "avg_frame_rate"):
+                val = stream.get(key)
+                if val and "/" in val:
+                    num, den = val.split("/", 1)
+                    if float(den) > 0:
+                        calc_fps = float(num) / float(den)
+                        if 1.0 <= calc_fps <= 240.0:
+                            fps = calc_fps
+                            break
+                elif val:
+                    try:
+                        calc_fps = float(val)
+                        if 1.0 <= calc_fps <= 240.0:
+                            fps = calc_fps
+                            break
+                    except ValueError:
+                        pass
+    except Exception as exc:
+        app.logger.warning("ffprobe failed for %s: %s", path, exc)
+    return duration, fps
+
+
 def ensure_category(name):
     """Find or create a category and make sure its upload folder exists."""
     name = " ".join(name.split())
@@ -320,41 +364,72 @@ def instagram_preview():
         return jsonify(error="Video conversion is unavailable because ffmpeg is not installed."), 503
     try:
         import yt_dlp
+        token = uuid.uuid4().hex
+        outtmpl = os.path.join(VIDEO_CACHE, token + "-source.%(ext)s")
         options = {
             "format": "best[ext=mp4]/best", "noplaylist": True,
             "quiet": True, "no_warnings": True, "socket_timeout": 20,
             "retries": 2, "max_filesize": 100 * 1024 * 1024,
+            "outtmpl": outtmpl,
         }
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
-            duration = float(info.get("duration") or 0)
-            if not duration or duration > 180:
+            media_info = info
+            if info and (info.get("_type") == "playlist" or "entries" in info):
+                entries = [e for e in (info.get("entries") or []) if e]
+                if entries:
+                    media_info = entries[0]
+            known_duration = float(media_info.get("duration") or 0) if media_info else 0.0
+            if known_duration > 180:
                 return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
-            token = uuid.uuid4().hex
-            outtmpl = os.path.join(VIDEO_CACHE, token + "-source.%(ext)s")
-            options["outtmpl"] = outtmpl
             with yt_dlp.YoutubeDL(options) as downloader:
                 downloader.download([url])
-        sources = glob.glob(os.path.join(VIDEO_CACHE, token + "-source.*"))
+        sources = sorted(glob.glob(os.path.join(VIDEO_CACHE, token + "-source.*")))
         if not sources:
             raise RuntimeError("Download produced no video file")
-        source = sources[0]
+        video_sources = [s for s in sources if s.lower().endswith((".mp4", ".mov", ".m4v", ".webm", ".mkv"))]
+        source = video_sources[0] if video_sources else sources[0]
+        probed_duration, probed_fps = probe_video(source)
+        duration = probed_duration or known_duration
+        fps = (float(media_info.get("fps") or 0) if media_info else 0.0) or probed_fps or 30.0
+        if duration and (duration < 1 or duration > 180):
+            for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
         preview = video_cache_path(token, ".mp4")
         subprocess.run([
             "ffmpeg", "-y", "-i", source, "-vf", "scale=720:-2:flags=lanczos",
             "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
             "-movflags", "+faststart", preview,
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=150)
+        if not duration or duration < 1:
+            duration, preview_fps = probe_video(preview)
+            if preview_fps:
+                fps = preview_fps
+        if not duration or duration < 1 or duration > 180:
+            for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
         with open(video_cache_path(token, ".json"), "w", encoding="utf-8") as metadata:
-            json.dump({"duration": duration, "fps": float(info.get("fps") or 30)}, metadata)
-        os.remove(source)
-        return jsonify(token=token, duration=duration, fps=float(info.get("fps") or 30),
+            json.dump({"duration": duration, "fps": fps}, metadata)
+        for s in sources:
+            try:
+                os.remove(s)
+            except OSError:
+                pass
+        return jsonify(token=token, duration=duration, fps=fps,
                        video_url=f"/exercise-video-preview/{token}")
     except ModuleNotFoundError as exc:
         if exc.name in ("yt_dlp", "yt_dip"):
-            return jsonify(error="The app container is missing yt-dlp. Rebuild and recreate the container, then retry."), 503
+            return jsonify(error="yt-dlp is missing. Run 'pip install yt-dlp' in your environment or rebuild the container, then retry."), 503
         app.logger.exception("Instagram video preview dependency is missing")
-        return jsonify(error="A video processing dependency is missing in the app container."), 503
+        return jsonify(error="A video processing dependency is missing."), 503
     except Exception as exc:
         if "token" in locals():
             for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
@@ -364,7 +439,9 @@ def instagram_preview():
                     pass
         app.logger.exception("Instagram video preview failed")
         lines = str(exc).splitlines()
-        detail = re.sub(r"https?://\S+", "[Instagram URL]", lines[-1] if lines else type(exc).__name__)[:180]
+        raw_msg = lines[-1] if lines else type(exc).__name__
+        clean_msg = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", raw_msg)
+        detail = re.sub(r"https?://\S+", "[Instagram URL]", clean_msg)[:180]
         return jsonify(error=f"Could not load this Instagram video: {detail}. Check that the post is public and try again."), 422
 
 

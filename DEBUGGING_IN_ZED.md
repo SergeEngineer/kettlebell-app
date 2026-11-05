@@ -11,9 +11,11 @@ From the project folder:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install flask gunicorn debugpy
+pip install flask gunicorn debugpy yt-dlp
 curl -L -o static/htmx.min.js https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js
 ```
+
+`yt-dlp` and `ffmpeg` are needed to load Instagram videos and convert them into GIFs. Ensure `ffmpeg` is installed on your host system (e.g. `sudo pacman -S ffmpeg` on Arch/Omarchy).
 
 The last command downloads htmx. The Dockerfile does this during the image build, but a local run outside Docker needs the file in place.
 
@@ -132,6 +134,8 @@ Sound works on the phone after the first tap. Keeping the screen awake needs HTT
 | `flask` import still unresolved | Check that `.venv` exists and `pyrightconfig.json` is in the project root, then restart the language server |
 | Page loads but buttons do nothing | `static/htmx.min.js` is missing. Run the `curl` command in section 1 |
 | Breakpoints are never hit | Make sure `--no-reload` is in the debug args and you started the debugger, not a normal run |
+| Missing `yt-dlp` error on Instagram video load | Run `pip install yt-dlp` in your active `.venv` (or rebuild the Docker container) |
+| Missing `ffmpeg` error | Install ffmpeg with `sudo pacman -S ffmpeg` (or your system's package manager) |
 | `permission denied` from Docker | Add your user to the `docker` group and log out and back in |
 | Port 8088 already in use | Stop the other process, or change the port in the run command and debug config |
 | Phone cannot reach the app | Check both devices are on the same network and the firewall allows 8088 |

@@ -67,6 +67,7 @@ kettlebell/
 │   ├── app.css            iOS look and feel
 │   └── htmx.min.js        Downloaded during the Docker build
 ├── Dockerfile
+├── .dockerignore
 ├── docker-compose.yml
 ├── README.md
 └── DEBUGGING_IN_ZED.md    Running and debugging locally
@@ -89,20 +90,91 @@ docker compose up --build
 
 ## Deploy on Unraid
 
-1. Copy the project folder to `/mnt/user/appdata/kettlebell-src`.
-2. In the Unraid terminal:
+### 1. Place the source on Unraid
+
+In the Unraid terminal:
+
+```bash
+git clone <repository-url> /mnt/user/appdata/kettlebell
+```
+
+*(Alternatively, copy the project folder to `/mnt/user/appdata/kettlebell` over your SMB appdata share).*
+
+### 2. Choose a deployment method
+
+#### Option A: Docker Compose (Fastest)
+
+If you have Docker Compose or the **Docker Compose Manager** plugin installed on Unraid:
+
+```bash
+cd /mnt/user/appdata/kettlebell
+docker compose up -d --build
+```
+
+`docker-compose.yml` is already preconfigured to map `/mnt/user/appdata/kettlebell` to `/data` and port `8088`.
+
+---
+
+#### Option B: Unraid Web UI (Standard)
+
+Note if you updating the app to the latest version by replacing all files from repo, DON NOT DELETE `/data` folder as it contains the database and GIF files.
+
+1. **Build the Docker image** in the Unraid terminal:
    ```bash
-   cd /mnt/user/appdata/kettlebell-src
+   cd /mnt/user/appdata/kettlebell
    docker build -t kettlebell .
    ```
-3. In the Docker tab, choose **Add Container** and set:
-   - **Repository:** `kettlebell`
-   - **Port:** host `8088` to container `8088`
-   - **Path:** `/mnt/user/appdata/kettlebell` mapped to `/data` (keeps your data between updates)
-4. Open `http://UNRAID-IP:8088` on your phone.
-5. In Safari, use **Share → Add to Home Screen** to get the full-screen app look.
 
-To update after changing code: rebuild the image and recreate the container. Your data in `/data` is kept.
+2. **Add the container**:
+   In the Unraid web interface, go to the **Docker** tab and click **Add Container** at the bottom:
+   - **Name:** `kettlebell`
+   - **Repository:** `kettlebell`
+   - **Network Type:** `Bridge`
+   - **WebUI:** `http://[IP]:[PORT:8088]/`
+
+3. **Add Port mapping**:
+   Click **+ Add another Path, Port, Variable, Device or Label**:
+   - **Config Type:** `Port`
+   - **Name:** `Web UI Port`
+   - **Container Port:** `8088`
+   - **Host Port:** `8088` (or another port if 8088 is already in use)
+   - **Connection Type:** `TCP`
+   - Click **Add**.
+
+4. **Add Data Path mapping**:
+   Click **+ Add another Path, Port, Variable, Device or Label**:
+   - **Config Type:** `Path`
+   - **Name:** `Appdata`
+   - **Container Path:** `/data`
+   - **Host Path:** `/mnt/user/appdata/kettlebell/data`
+   - **Access Mode:** `Read/Write`
+   - Click **Add**.
+
+5. Click **Apply** to start the container.
+
+---
+
+### 3. Open on your devices
+
+1. Open `http://<UNRAID-IP>:8088` in your browser.
+2. On your iPhone, open the URL in Safari and tap **Share → Add to Home Screen** for the full-screen native app look.
+
+### Updating after code changes
+
+- **If using Compose:**
+  ```bash
+  cd /mnt/user/appdata/kettlebell-src
+  git pull
+  docker compose up -d --build
+  ```
+- **If using Unraid Web UI:**
+  1. In the Unraid terminal:
+     ```bash
+     cd /mnt/user/appdata/kettlebell-src
+     git pull
+     docker build -t kettlebell .
+     ```
+  2. In the Unraid **Docker** tab, click the `kettlebell` container icon, select **Edit**, and click **Apply** at the bottom. Unraid will recreate the container using the new image while preserving all your exercises, workouts, and calendar history in `/mnt/user/appdata/kettlebell`.
 
 ## Notes
 
