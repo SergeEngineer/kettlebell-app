@@ -4,7 +4,7 @@
   <li data-id="{{ e.id }}">
     <div class="sw" data-kind="exercise">
       <div class="row tap">
-        {% if e.gif %}<img class="thumb" src="/media/{{ e.gif|urlencode }}" alt="" draggable="false">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
+        {% if e.gif %}<img class="thumb exercise-gif" src="/media/{{ e.gif|urlencode }}" alt="{{ e.name }} GIF" draggable="false" role="button" tabindex="0" aria-label="View {{ e.name }} GIF full screen" onclick="openGifViewer(this);event.stopPropagation()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openGifViewer(this)}">{% else %}<span class="thumb rest">{{ e.name[:1]|upper }}</span>{% endif %}
         <span class="grow"><strong>{{ e.name }}</strong>{% if e.category %}<small>{{ e.category }}</small>{% endif %}</span>
         <button class="icon" aria-label="Rename" onclick="const f=this.closest('li').querySelector('.edit');f.hidden=!f.hidden">✎</button>
       </div>

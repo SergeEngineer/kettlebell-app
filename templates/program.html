@@ -12,12 +12,12 @@
     <button type="button" class="dimbtn" onclick="this.closest('form').hidden=true;document.querySelector('.titlebar').hidden=false">Cancel</button>
     <button class="blue">Save</button></div>
 </form>
-<div id="steps">{{ partial|safe }}</div>
+<div id="steps" data-pid="{{ p.id }}">{{ partial|safe }}</div>
 
 <h2>Add step</h2>
 <form id="addstep" class="group" hx-post="/programs/{{ p.id }}/steps" hx-target="#steps" hx-encoding="multipart/form-data"
       hx-on::before-request="this._new = this.kind.value==='workout' && this.exercise.value==='new'"
-      hx-on::after-request="if(this._new){location.reload()}else{this.reset();ui(this);initWheels(this)}">
+      hx-on::after-request="if(this._new){location.reload()}else{this.reset();ui(this);setPickerDuration(this.querySelector('.picker'),300);initWheels(this)}">
   <div class="seg">
     <label><input type="radio" name="kind" value="workout" checked>Workout</label>
     <label><input type="radio" name="kind" value="rest">Rest</label>
@@ -76,8 +76,12 @@ function filterExercises(f, cat){
   if (checked && checked.closest('.pick').hidden) { checked.checked = false; ui(f); }
 }
 const f = document.getElementById('addstep');
-f.addEventListener('change', () => ui(f));
+f.addEventListener('change', e => {
+  ui(f);
+  if (e.target.name === 'kind') setPickerDuration(f.querySelector('.picker'), e.target.value === 'rest' ? 30 : 300);
+});
 f.querySelectorAll('.catfilter .chip').forEach(b => b.addEventListener('click', () => filterExercises(f, b.dataset.cat)));
 ui(f);
 </script>
 {% endblock %}
+{% block post_main %}{% include "_tabs.html" %}{% endblock %}

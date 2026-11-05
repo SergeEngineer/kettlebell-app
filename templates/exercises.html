@@ -3,25 +3,113 @@
 <div class="shell">
   <div class="scroll"><div class="col">
     <h1>Exercises</h1>
+    <details class="ig-creator">
+      <summary>Create a GIF from an Instagram video</summary>
+      <p class="ig-help">Use a public post or Reel. Choose a start and end frame from the preview; GIF clips can be up to 15 seconds.</p>
+      <form id="ig-source-form" onsubmit="loadInstagramVideo(event)">
+        <label class="ig-label" for="ig-url">Instagram post or Reel URL</label>
+        <div class="exrow"><input id="ig-url" name="url" type="url" placeholder="https://www.instagram.com/reel/…" required><button class="ig-action">Load video</button></div>
+      </form>
+      <p id="ig-status" class="ig-status" role="status" aria-live="polite"></p>
+      <div id="ig-studio" hidden>
+        <video id="ig-video" controls playsinline preload="metadata"></video>
+        <p id="ig-preview-point" class="ig-preview-point">Previewing the start frame</p>
+        <label class="ig-label" for="ig-start">Start <output id="ig-start-time">0:00.00</output></label>
+        <input id="ig-start" class="ig-range" type="range" min="0" max="5" step="0.04" value="0">
+        <label class="ig-label" for="ig-end">End <output id="ig-end-time">0:05.00</output></label>
+        <input id="ig-end" class="ig-range" type="range" min="0.04" max="5" step="0.04" value="5">
+        <p id="ig-length" class="ig-length"></p>
+        <form id="ig-save-form" onsubmit="saveInstagramGif(event)">
+          <input type="hidden" name="token">
+          <label class="ig-label" for="ig-name">Exercise name</label>
+          <input id="ig-name" name="ex_title" type="text" placeholder="Exercise name" required maxlength="120">
+          <label class="ig-label" for="ig-category">Category</label>
+          <select id="ig-category" name="category" onchange="const n=document.getElementById('ig-new-category');n.hidden=this.value!=='new';n.required=!n.hidden">
+            <option value="">No category</option>
+            {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            <option value="new">＋ New category…</option>
+          </select>
+          <input id="ig-new-category" name="ex_category_new" type="text" placeholder="New category" hidden>
+          <button id="ig-save" class="ig-save">Create GIF and save exercise</button>
+        </form>
+      </div>
+      <details class="phone-upload">
+        <summary>Upload a GIF from my phone</summary>
+        <form class="phone-upload-form" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" hx-disabled-elt="find button" autocomplete="on"
+              hx-on::after-request="if(event.detail.successful){this.reset();const c=this.ex_category_new;c.hidden=true;c.required=false;document.getElementById('fname').textContent='Choose GIF'}">
+          <input name="ex_title" type="text" placeholder="Exercise name" required autocomplete="on" autocorrect="on" autocapitalize="words" spellcheck="true" enterkeyhint="done">
+          <div class="exrow">
+            <select name="category" onchange="const c=this.form.ex_category_new;c.hidden=this.value!=='new';c.required=!c.hidden;if(!c.hidden)c.focus()">
+              <option value="">No category</option>
+              {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+              <option value="new">＋ New category…</option>
+            </select>
+            <input name="ex_category_new" type="text" placeholder="New category" hidden autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="true">
+          </div>
+          <div class="exrow">
+            <label class="filebtn"><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg" hidden
+              onchange="document.getElementById('fname').textContent=this.files[0]?this.files[0].name:'Choose GIF'"><span id="fname">Choose GIF</span></label>
+            <button class="save-exercise"><span class="save-label">Save exercise</span><span class="saving-label">Saving…</span><span class="upload-spinner" aria-hidden="true"></span></button>
+          </div>
+        </form>
+      </details>
+    </details>
     <div id="list">{{ partial|safe }}</div>
   </div></div>
-  <form class="addbar ex" hx-post="/exercises" hx-target="#list" hx-encoding="multipart/form-data" autocomplete="on"
-        hx-on::after-request="this.reset();const c=this.ex_category_new;c.hidden=true;c.required=false;document.getElementById('fname').textContent='Choose GIF'">
-    <input name="ex_title" type="text" placeholder="New exercise name" required autocomplete="on" autocorrect="on" autocapitalize="words" spellcheck="true" enterkeyhint="done">
-    <div class="exrow">
-      <select name="category" onchange="const c=this.form.ex_category_new;c.hidden=this.value!=='new';c.required=!c.hidden;if(!c.hidden)c.focus()">
-        <option value="">No category</option>
-        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
-        <option value="new">＋ New category…</option>
-      </select>
-      <input name="ex_category_new" type="text" placeholder="New category" hidden autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="true">
-    </div>
-    <div class="exrow">
-      <label class="filebtn"><input type="file" name="gif" accept="image/gif,image/webp,image/png,image/jpeg" hidden
-        onchange="document.getElementById('fname').textContent=this.files[0]?this.files[0].name:'Choose GIF'"><span id="fname">Choose GIF</span></label>
-      <button>Save exercise</button>
-    </div>
-  </form>
   {% include "_tabs.html" %}
 </div>
+<script>
+const igTime=t=>{const m=Math.floor(t/60),s=(t%60).toFixed(2).padStart(5,'0');return `${m}:${s}`};
+function updateIgRange(which){
+  const video=document.getElementById('ig-video'),start=document.getElementById('ig-start'),end=document.getElementById('ig-end'),
+        step=+start.step||.04,duration=+video.dataset.duration;
+  if(which==='start'&&+start.value>=+end.value)start.value=Math.max(0,+end.value-step);
+  if(which==='end'&&+end.value<=+start.value)end.value=Math.min(duration,+start.value+step);
+  start.min=Math.max(0,+end.value-15);start.max=Math.max(+start.min,+end.value-step);
+  end.min=Math.min(duration,+start.value+step);end.max=Math.min(duration,+start.value+15);
+  const active=which==='end'?+end.value:+start.value;
+  video.dataset.previewTime=active;video.pause();if(video.readyState>=1)video.currentTime=active;
+  document.getElementById('ig-start-time').textContent=igTime(+start.value);
+  document.getElementById('ig-end-time').textContent=igTime(+end.value);
+  document.getElementById('ig-length').textContent=`Selected GIF length: ${(+end.value-+start.value).toFixed(2)} seconds (up to 15 seconds)`;
+  document.getElementById('ig-preview-point').textContent=which==='end'?'Previewing the end frame':'Previewing the start frame';
+}
+async function loadInstagramVideo(event){
+  event.preventDefault();const form=event.currentTarget,button=form.querySelector('button'),status=document.getElementById('ig-status');
+  button.disabled=true;button.textContent='Loading video…';status.textContent='Loading and preparing the video preview…';
+  document.getElementById('ig-studio').hidden=true;
+  try{
+    const response=await fetch('/exercises/instagram/preview',{method:'POST',body:new FormData(form)}),data=await response.json();
+    if(!response.ok)throw new Error(data.error||'Could not load the video.');
+    const video=document.getElementById('ig-video'),step=1/Math.max(1,+data.fps||24),end=Math.min(5,+data.duration,15);
+    video.src=data.video_url;video.dataset.duration=data.duration;
+    video.addEventListener('loadedmetadata',()=>{video.currentTime=+video.dataset.previewTime||0},{once:true});
+    document.getElementById('ig-save-form').elements.token.value=data.token;
+    const start=document.getElementById('ig-start'),finish=document.getElementById('ig-end');
+    start.step=finish.step=step;start.min=0;start.max=Math.max(0,end-step);start.value=0;
+    finish.min=step;finish.max=data.duration;finish.value=end;
+    document.getElementById('ig-studio').hidden=false;document.getElementById('ig-status').textContent='Adjust the sliders to preview the exact first and last frames.';
+    updateIgRange('start');
+  }catch(error){status.textContent=error.message}
+  finally{button.disabled=false;button.textContent='Load video'}
+}
+async function saveInstagramGif(event){
+  event.preventDefault();const form=event.currentTarget,button=document.getElementById('ig-save'),status=document.getElementById('ig-status');
+  button.disabled=true;button.textContent='Creating GIF…';status.textContent='Converting the selected video frames into a GIF…';
+  const payload=new FormData(form);payload.set('start',document.getElementById('ig-start').value);payload.set('end',document.getElementById('ig-end').value);
+  try{
+    const response=await fetch('/exercises/instagram/save',{method:'POST',body:payload}),data=await response.json();
+    if(!response.ok)throw new Error(data.error||'GIF creation failed.');
+    if(data.refresh){location.reload();return}
+    const list=document.getElementById('list');list.innerHTML=data.html;htmx.process(list);
+    const video=document.getElementById('ig-video');video.pause();video.removeAttribute('src');video.load();
+    document.getElementById('ig-studio').hidden=true;document.getElementById('ig-source-form').reset();form.reset();
+    const newCategory=document.getElementById('ig-new-category');newCategory.hidden=true;newCategory.required=false;
+    status.textContent='GIF saved as a new exercise.';
+  }catch(error){status.textContent=error.message}
+  finally{button.disabled=false;button.textContent='Create GIF and save exercise'}
+}
+document.getElementById('ig-start').addEventListener('input',()=>updateIgRange('start'));
+document.getElementById('ig-end').addEventListener('input',()=>updateIgRange('end'));
+</script>
 {% endblock %}

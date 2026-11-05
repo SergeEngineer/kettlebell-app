@@ -6,13 +6,14 @@ A small web app for building kettlebell workouts and running them with a countdo
 
 **Exercises**
 - Save an exercise as a name, a category and a GIF showing the movement. Pick an existing category or create a new one while saving. Each category gets its own folder under `/data/uploads/` (for example `/data/uploads/Kettlebell/Kettlebell Swing.gif`); GIFs are renamed when you rename the exercise.
+- Create a GIF from a public Instagram post or Reel by loading its URL, previewing the video, and choosing the start and end frames (up to 15 seconds).
 - Change an exercise's category with ✎; its GIF moves to the new category folder.
 - Delete exercises you no longer need.
 
 **Workouts**
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
 - When adding an exercise step, filter the picker by category and choose from animated GIF thumbnails.
-- Reorder steps with the up and down buttons, and remove steps you don't want.
+- Reorder steps by holding and dragging them, or use the up and down buttons; remove steps you don't want.
 - See the total workout time.
 - Rename a workout with the ✎ icon beside its title, and swipe a workout left on the home screen to delete it. Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
 

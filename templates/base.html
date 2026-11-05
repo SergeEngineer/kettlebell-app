@@ -15,10 +15,25 @@
 <script src="/static/htmx.min.js"></script>
 </head>
 <body>
-{% block page %}<main>{% block body %}{% endblock %}</main>{% endblock %}
+{% block page %}<main>{% block body %}{% endblock %}</main>{% block post_main %}{% endblock %}{% endblock %}
+<div id="gif-viewer" class="gif-viewer" hidden role="dialog" aria-modal="true" aria-label="Exercise GIF viewer" onclick="if(event.target===this)closeGifViewer()">
+  <button class="gif-close" type="button" aria-label="Close full-screen GIF" onclick="closeGifViewer()">×</button>
+  <img id="gif-viewer-image" alt="">
+</div>
 <script>
 // iOS-style scroll wheels for minutes / seconds
 const IH = 40;
+function openGifViewer(img){
+  const viewer=document.getElementById('gif-viewer'), large=document.getElementById('gif-viewer-image');
+  large.src=img.currentSrc||img.src; large.alt=img.alt; viewer.hidden=false;
+  document.body.classList.add('gif-viewing'); viewer.querySelector('.gif-close').focus();
+}
+function closeGifViewer(){
+  const viewer=document.getElementById('gif-viewer'); if(viewer.hidden)return;
+  viewer.hidden=true; document.body.classList.remove('gif-viewing');
+  document.getElementById('gif-viewer-image').removeAttribute('src');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeGifViewer()});
 function wheelPaint(w){
   const c = w.scrollTop / IH, mid = Math.round(c);
   (w._lit || []).forEach(el => { el.style.opacity = ''; el.style.transform = ''; el.style.fontWeight = ''; });
@@ -36,8 +51,9 @@ function initWheels(root){
     if (!w._init) {
       w._init = 1;
       w.addEventListener('scroll', () => {
-        const v = Math.max(0, Math.round(w.scrollTop / IH));
-        w.closest('.picker').querySelector('input[name=' + w.dataset.target + ']').value = v;
+        const v = Math.max(0, Math.min(w.querySelectorAll('.it').length - 1, Math.round(w.scrollTop / IH)));
+        const item = w.querySelectorAll('.it')[v];
+        w.closest('.picker').querySelector('input[name=' + w.dataset.target + ']').value = item.dataset.value ?? v;
         wheelPaint(w);
         if (Date.now() > (w._quiet || 0)) {            // user scrolled: auto-save shortly after they stop
           clearTimeout(w._t);
@@ -51,7 +67,20 @@ function initWheels(root){
     }
     w._quiet = Date.now() + 500;
     w.scrollTop = (+w.dataset.val) * IH;
+    const initialIndex=Math.max(0,Math.min(w.querySelectorAll('.it').length-1,+w.dataset.val));
+    const initialItem=w.querySelectorAll('.it')[initialIndex];
+    w.closest('.picker').querySelector('input[name='+w.dataset.target+']').value=initialItem.dataset.value??initialIndex;
     wheelPaint(w);
+  });
+}
+function setPickerDuration(picker, seconds){
+  const values={min:Math.floor(seconds/60),sec:seconds%60};
+  picker.querySelectorAll('.wheel').forEach(w=>{
+    const input=picker.querySelector('input[name='+w.dataset.target+']');
+    input.value=values[w.dataset.target];
+    const items=[...w.querySelectorAll('.it')];
+    const index=items.findIndex(it=>(+(it.dataset.value??items.indexOf(it)))===values[w.dataset.target]);
+    w._quiet=Date.now()+500; w.scrollTop=Math.max(0,index)*IH; wheelPaint(w);
   });
 }
 const fmtTime = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -67,7 +96,7 @@ function toggleStep(row, ev){
 }
 
 // ---- swipe left to delete (like iOS Mail) ----
-const OPEN_W = 88; let swipe = null;
+const OPEN_W = 88; let swipe = null, dragStep = null;
 function setX(sw, x, anim){
   const row = sw.querySelector('.row'), del = sw.querySelector('.del');
   row.style.transition = anim ? 'transform .25s ease' : 'none';
@@ -96,23 +125,58 @@ document.addEventListener('pointerdown', e => {
   const sw = e.target.closest('.sw');
   closeSwipes(sw);
   if (!sw || e.target.closest('button')) return;
-  swipe = {sw, id: e.pointerId, x0: e.clientX, y0: e.clientY, base: sw.classList.contains('open') ? -OPEN_W : 0, locked: null, x: 0};
+  const state={sw,id:e.pointerId,x0:e.clientX,y0:e.clientY,lastY:e.clientY,base:sw.classList.contains('open')?-OPEN_W:0,locked:null,x:0};
+  swipe=state;
+  if(sw.dataset.kind==='step'){
+    state.li=sw.closest('li');
+    state.timer=setTimeout(()=>{
+      if(swipe!==state)return;
+      dragStep={li:state.li,id:state.id,original:[...document.querySelectorAll('#steps li')].map(li=>li.dataset.id)};
+      swipe=null; state.li.classList.add('dragging');
+      try{sw.querySelector('.row').setPointerCapture(state.id)}catch(_){}
+    },500);
+  }
 });
 document.addEventListener('pointermove', e => {
+  if(dragStep&&e.pointerId===dragStep.id){
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('#steps li');
+    if(target&&target!==dragStep.li){const r=target.getBoundingClientRect();e.clientY<r.top+r.height/2?target.before(dragStep.li):target.after(dragStep.li)}
+    return;
+  }
   if (!swipe || e.pointerId !== swipe.id) return;
+  if(swipe.scrolling){window.scrollBy(0,swipe.lastY-e.clientY);swipe.lastY=e.clientY;return;}
   const dx = e.clientX - swipe.x0, dy = e.clientY - swipe.y0;
   if (swipe.locked === null) {
     if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
     swipe.locked = Math.abs(dx) > Math.abs(dy);
-    if (!swipe.locked) { swipe = null; return; }
+    if (!swipe.locked) {
+      if(swipe.li){clearTimeout(swipe.timer);swipe.scrolling=true;swipe.lastY=e.clientY;return;}
+      swipe = null; return;
+    }
+    clearTimeout(swipe.timer);
     try { swipe.sw.querySelector('.row').setPointerCapture(e.pointerId); } catch (_) {}
   }
   swipe.x = Math.min(0, swipe.base + dx);
   setX(swipe.sw, swipe.x, false);
 });
 function endSwipe(e){
+  if(dragStep&&e.pointerId===dragStep.id){
+    const d=dragStep;dragStep=null;d.li.classList.remove('dragging');
+    d.li.querySelector('.sw')._dragged=Date.now();
+    const ids=[...document.querySelectorAll('#steps li')].map(li=>li.dataset.id);
+    if(ids.join(',')!==d.original.join(',')){
+      const body=new URLSearchParams();ids.forEach(id=>body.append('ids',id));
+      const steps=document.getElementById('steps');
+      fetch('/steps/reorder/'+steps.dataset.pid,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body,credentials:'same-origin'})
+        .then(r=>{if(!r.ok)throw new Error('Reorder failed');return r.text()})
+        .then(html=>{steps.innerHTML=html;htmx.process(steps)})
+        .catch(()=>{const nodes=new Map([...steps.querySelectorAll('li')].map(li=>[li.dataset.id,li]));d.original.forEach(id=>{if(nodes.has(id))nodes.get(id).parentElement.append(nodes.get(id))})});
+    }
+    return;
+  }
   if (!swipe || e.pointerId !== swipe.id) return;
-  const s = swipe; swipe = null;
+  const s = swipe; swipe = null;clearTimeout(s.timer);
+  if(s.scrolling)return;
   if (!s.locked) return;
   s.sw._dragged = Date.now();
   if (s.x < -s.sw.offsetWidth * 0.55) removeSwipe(s.sw);          // long swipe deletes right away

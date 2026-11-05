@@ -1,11 +1,13 @@
-import os, re, sqlite3, uuid
+import glob, json, math, os, re, shutil, sqlite3, subprocess, time, uuid
 from datetime import date
-from urllib.parse import quote
-from flask import Flask, render_template, request, redirect, g, abort, send_from_directory, make_response
+from urllib.parse import quote, urlsplit
+from flask import Flask, render_template, request, redirect, g, abort, send_from_directory, make_response, jsonify
 
 DATA = os.environ.get("DATA_DIR", "/data")
 UPLOADS = os.path.join(DATA, "uploads")
+VIDEO_CACHE = os.path.join(DATA, "video-cache")
 os.makedirs(UPLOADS, exist_ok=True)
+os.makedirs(VIDEO_CACHE, exist_ok=True)
 ALLOWED = {".gif", ".webp", ".png", ".jpg", ".jpeg"}
 
 app = Flask(__name__)
@@ -95,7 +97,7 @@ def program(pid):
         order by e.name collate nocase""").fetchall()
     cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
     uncategorized = db().execute("select exists(select 1 from exercises where category_id is null)").fetchone()[0]
-    return render_template("program.html", p=p, exercises=ex, categories=cats,
+    return render_template("program.html", p=p, exercises=ex, categories=cats, tab="w",
                            has_uncategorized=bool(uncategorized), partial=steps_partial(pid))
 
 
@@ -141,6 +143,34 @@ def save_gif(f, name, category=None):
             f.save(os.path.join(folder, fn))
             return rel_upload_path(os.path.join(folder, fn))
     return None
+
+
+def instagram_url(value):
+    try:
+        parsed = urlsplit(value.strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        port = parsed.port
+    except ValueError:
+        return False
+    return (parsed.scheme == "https" and port in (None, 443) and
+            not parsed.username and not parsed.password and
+            (host == "instagram.com" or host.endswith(".instagram.com") or host == "instagr.am"))
+
+
+def clean_video_cache():
+    cutoff = time.time() - 3600
+    for path in glob.glob(os.path.join(VIDEO_CACHE, "*")):
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass
+
+
+def video_cache_path(token, suffix):
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        abort(404)
+    return os.path.join(VIDEO_CACHE, token + suffix)
 
 
 def ensure_category(name):
@@ -216,6 +246,22 @@ def move_step(sid, d):
     return steps_partial(pid)
 
 
+@app.post("/steps/reorder/<int:pid>")
+def reorder_steps(pid):
+    c = db()
+    current = [r[0] for r in c.execute("select id from steps where program_id=? order by pos,id", (pid,))]
+    try:
+        ordered = [int(value) for value in request.form.getlist("ids")]
+    except ValueError:
+        abort(400)
+    if len(ordered) != len(current) or set(ordered) != set(current):
+        abort(400)
+    for pos, sid in enumerate(ordered):
+        c.execute("update steps set pos=? where id=? and program_id=?", (pos, sid, pid))
+    c.commit()
+    return steps_partial(pid)
+
+
 @app.delete("/steps/<int:sid>")
 def del_step(sid):
     pid = db().execute("select program_id from steps where id=?", (sid,)).fetchone()[0]
@@ -262,6 +308,120 @@ def add_exercise():
             resp.headers["HX-Refresh"] = "true"
         return resp
     return exercises_partial()
+
+
+@app.post("/exercises/instagram/preview")
+def instagram_preview():
+    clean_video_cache()
+    url = request.form.get("url", "").strip()
+    if len(url) > 2048 or not instagram_url(url):
+        return jsonify(error="Enter a valid Instagram post or Reel URL."), 400
+    if not shutil.which("ffmpeg"):
+        return jsonify(error="Video conversion is unavailable because ffmpeg is not installed."), 503
+    try:
+        import yt_dlp
+        options = {
+            "format": "best[ext=mp4]/best", "noplaylist": True,
+            "quiet": True, "no_warnings": True, "socket_timeout": 20,
+            "retries": 2, "max_filesize": 100 * 1024 * 1024,
+        }
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=False)
+            duration = float(info.get("duration") or 0)
+            if not duration or duration > 180:
+                return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
+            token = uuid.uuid4().hex
+            outtmpl = os.path.join(VIDEO_CACHE, token + "-source.%(ext)s")
+            options["outtmpl"] = outtmpl
+            with yt_dlp.YoutubeDL(options) as downloader:
+                downloader.download([url])
+        sources = glob.glob(os.path.join(VIDEO_CACHE, token + "-source.*"))
+        if not sources:
+            raise RuntimeError("Download produced no video file")
+        source = sources[0]
+        preview = video_cache_path(token, ".mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-i", source, "-vf", "scale=720:-2:flags=lanczos",
+            "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "-movflags", "+faststart", preview,
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=150)
+        with open(video_cache_path(token, ".json"), "w", encoding="utf-8") as metadata:
+            json.dump({"duration": duration, "fps": float(info.get("fps") or 30)}, metadata)
+        os.remove(source)
+        return jsonify(token=token, duration=duration, fps=float(info.get("fps") or 30),
+                       video_url=f"/exercise-video-preview/{token}")
+    except ModuleNotFoundError as exc:
+        if exc.name in ("yt_dlp", "yt_dip"):
+            return jsonify(error="The app container is missing yt-dlp. Rebuild and recreate the container, then retry."), 503
+        app.logger.exception("Instagram video preview dependency is missing")
+        return jsonify(error="A video processing dependency is missing in the app container."), 503
+    except Exception as exc:
+        if "token" in locals():
+            for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        app.logger.exception("Instagram video preview failed")
+        lines = str(exc).splitlines()
+        detail = re.sub(r"https?://\S+", "[Instagram URL]", lines[-1] if lines else type(exc).__name__)[:180]
+        return jsonify(error=f"Could not load this Instagram video: {detail}. Check that the post is public and try again."), 422
+
+
+@app.get("/exercise-video-preview/<token>")
+def exercise_video_preview(token):
+    return send_from_directory(VIDEO_CACHE, os.path.basename(video_cache_path(token, ".mp4")),
+                               mimetype="video/mp4", max_age=0)
+
+
+@app.post("/exercises/instagram/save")
+def save_instagram_gif():
+    clean_video_cache()
+    name = request.form.get("ex_title", "").strip()
+    token = request.form.get("token", "")
+    if not name or len(name) > 120:
+        return jsonify(error="Enter an exercise name."), 400
+    source = video_cache_path(token, ".mp4")
+    metadata_path = video_cache_path(token, ".json")
+    if not os.path.isfile(source) or not os.path.isfile(metadata_path):
+        return jsonify(error="The video preview expired. Load the Instagram URL again."), 400
+    try:
+        with open(metadata_path, encoding="utf-8") as metadata:
+            duration = float(json.load(metadata)["duration"])
+        start, end = float(request.form.get("start", "nan")), float(request.form.get("end", "nan"))
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return jsonify(error="Choose valid start and end points."), 400
+    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15:
+        return jsonify(error="Choose a clip up to 15 seconds long within the video."), 400
+    output = video_cache_path(token, "-clip.gif")
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-ss", f"{start:.4f}", "-i", source, "-t", f"{end-start:.4f}",
+            "-filter_complex",
+            "[0:v]fps=12,scale=480:-2:flags=lanczos,split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
+            "-an", "-loop", "0", output,
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        try:
+            os.remove(output)
+        except OSError:
+            pass
+        return jsonify(error="GIF creation failed. Try a shorter section of the video."), 422
+    cid, created = category_from_form(request.form)
+    folder = category_folder(category_name(cid))
+    os.makedirs(folder, exist_ok=True)
+    filename = unique_name(sanitize(name), ".gif", folder=folder)
+    target = os.path.join(folder, filename)
+    os.replace(output, target)
+    db().execute("insert into exercises(name,gif,category_id) values(?,?,?)",
+                 (name, rel_upload_path(target), cid))
+    db().commit()
+    for path in (source, metadata_path, video_cache_path(token, ".mp4")):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return jsonify(html=exercises_partial(), refresh=created)
 
 
 @app.post("/exercises/<int:eid>")
