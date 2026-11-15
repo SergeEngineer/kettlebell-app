@@ -1,14 +1,16 @@
 import glob, json, math, os, re, shutil, sqlite3, subprocess, time, uuid
 from datetime import date
-from urllib.parse import quote, urlsplit
-from flask import Flask, render_template, request, redirect, g, abort, send_from_directory, make_response, jsonify
+from urllib.parse import urlsplit
+from flask import Flask, request, g, abort, send_from_directory, jsonify
 
 DATA = os.environ.get("DATA_DIR", "/data")
 UPLOADS = os.path.join(DATA, "uploads")
 VIDEO_CACHE = os.path.join(DATA, "video-cache")
+WEB_DIR = os.environ.get("WEB_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
 os.makedirs(UPLOADS, exist_ok=True)
 os.makedirs(VIDEO_CACHE, exist_ok=True)
 ALLOWED = {".gif", ".webp", ".png", ".jpg", ".jpeg"}
+MAX_SECONDS = 99 * 60 + 59
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
@@ -41,74 +43,13 @@ with sqlite3.connect(os.path.join(DATA, "app.db")) as c:
         c.execute("alter table steps add column label text")
     if "category_id" not in [row[1] for row in c.execute("pragma table_info(exercises)")]:
         c.execute("alter table exercises add column category_id integer")
-
-
-@app.template_filter("fmt")
-def fmt(s):
-    return f"{s // 60}:{s % 60:02d}"
+    if "seconds" not in [row[1] for row in c.execute("pragma table_info(completions)")]:
+        c.execute("alter table completions add column seconds integer not null default 0")
+        c.execute("""update completions set seconds=coalesce(
+            (select sum(s.seconds) from steps s where s.program_id=completions.program_id), 0)""")
 
 
 # ---------- helpers ----------
-def programs_partial():
-    rows = db().execute("""select p.id, p.name, coalesce(sum(s.seconds),0) total, count(s.id) n
-        from programs p left join steps s on s.program_id=p.id group by p.id order by p.id""").fetchall()
-    return render_template("_programs.html", programs=rows)
-
-
-def exercises_partial():
-    rows = db().execute("""select e.*, c.name category from exercises e
-        left join categories c on c.id=e.category_id
-        order by e.name collate nocase""").fetchall()
-    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
-    return render_template("_exercises.html", exercises=rows, categories=cats)
-
-
-def get_steps(pid):
-    return db().execute("""select s.id, s.seconds, s.exercise_id, s.label, e.name, e.gif
-        from steps s left join exercises e on e.id=s.exercise_id
-        where s.program_id=? order by s.pos, s.id""", (pid,)).fetchall()
-
-
-def steps_partial(pid):
-    st = get_steps(pid)
-    return render_template("_steps.html", steps=st, pid=pid, total=sum(s["seconds"] for s in st))
-
-
-# ---------- workouts ----------
-@app.get("/")
-def index():
-    return render_template("index.html", tab="w", partial=programs_partial())
-
-
-@app.post("/programs")
-def add_program():
-    name = request.form.get("wk_title", "").strip()
-    if name:
-        db().execute("insert into programs(name) values(?)", (name,))
-        db().commit()
-    return programs_partial()
-
-
-@app.get("/programs/<int:pid>")
-def program(pid):
-    p = db().execute("select * from programs where id=?", (pid,)).fetchone() or abort(404)
-    ex = db().execute("""select e.*, c.name category from exercises e
-        left join categories c on c.id=e.category_id
-        order by e.name collate nocase""").fetchall()
-    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
-    uncategorized = db().execute("select exists(select 1 from exercises where category_id is null)").fetchone()[0]
-    return render_template("program.html", p=p, exercises=ex, categories=cats, tab="w",
-                           has_uncategorized=bool(uncategorized), partial=steps_partial(pid))
-
-
-@app.delete("/programs/<int:pid>")
-def del_program(pid):
-    db().execute("delete from steps where program_id=?", (pid,))
-    db().execute("delete from programs where id=?", (pid,))
-    db().commit()
-    return programs_partial()
-
-
 def sanitize(name):
     """Exercise name -> safe file name (without extension)."""
     return re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", name).strip(" .")[:100] or "exercise"
@@ -157,12 +98,35 @@ def instagram_url(value):
             (host == "instagram.com" or host.endswith(".instagram.com") or host == "instagr.am"))
 
 
-def clean_video_cache():
+def clean_video_cache(keep=None):
     cutoff = time.time() - 3600
+    keep = keep if keep and re.fullmatch(r"[0-9a-f]{32}", keep) else None
     for path in glob.glob(os.path.join(VIDEO_CACHE, "*")):
+        if keep and os.path.basename(path).startswith(keep):
+            continue
         try:
             if os.path.getmtime(path) < cutoff:
                 os.remove(path)
+        except OSError:
+            pass
+
+
+def purge_video_cache():
+    """Remove every cached video preview. Called whenever a page is opened."""
+    for path in glob.glob(os.path.join(VIDEO_CACHE, "*")):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def release_video_cache(token):
+    """Remove the cached files for one preview token, if it is valid."""
+    if not re.fullmatch(r"[0-9a-f]{32}", token or ""):
+        return
+    for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
+        try:
+            os.remove(path)
         except OSError:
             pass
 
@@ -232,10 +196,10 @@ def ensure_category(name):
 
 
 def category_from_form(form):
-    """Resolve the category select (existing id or a new category name)."""
-    sel = form.get("category", "").strip()
+    """Resolve the category field: an existing id, "new" (+ new_category name) or empty."""
+    sel = str(form.get("category") or "").strip()
     if sel == "new":
-        return ensure_category(form.get("ex_category_new", "").strip())
+        return ensure_category(str(form.get("new_category") or "").strip())
     if sel.isdigit():
         row = db().execute("select id from categories where id=?", (int(sel),)).fetchone()
         return (row["id"], False) if row else (None, False)
@@ -249,115 +213,10 @@ def category_name(cid):
     return row["name"] if row else None
 
 
-@app.post("/programs/<int:pid>/steps")
-def add_step(pid):
-    kind = request.form.get("kind", "workout")
-    secs = int(request.form.get("min") or 0) * 60 + int(request.form.get("sec") or 0)
-    ex_id = None
-    if kind == "workout":
-        sel = request.form.get("exercise", "")
-        if sel == "new":
-            name = request.form.get("ex_new_title", "").strip()
-            if not name:
-                return steps_partial(pid)
-            cur = db().execute("insert into exercises(name,gif) values(?,?)",
-                               (name, save_gif(request.files.get("gif"), name)))
-            ex_id = cur.lastrowid
-        elif sel.isdigit():
-            ex_id = int(sel)
-        else:
-            return steps_partial(pid)
-    if secs > 0:
-        pos = db().execute("select coalesce(max(pos),-1)+1 from steps where program_id=?", (pid,)).fetchone()[0]
-        db().execute("insert into steps(program_id,pos,exercise_id,seconds) values(?,?,?,?)",
-                     (pid, pos, ex_id, secs))
-    db().commit()
-    return steps_partial(pid)
-
-
-@app.post("/steps/<int:sid>/move/<d>")
-def move_step(sid, d):
-    c = db()
-    pid = c.execute("select program_id from steps where id=?", (sid,)).fetchone()[0]
-    ids = [r[0] for r in c.execute("select id from steps where program_id=? order by pos,id", (pid,))]
-    i = ids.index(sid)
-    j = i - 1 if d == "up" else i + 1
-    if 0 <= j < len(ids):
-        ids[i], ids[j] = ids[j], ids[i]
-    for n, x in enumerate(ids):
-        c.execute("update steps set pos=? where id=?", (n, x))
-    c.commit()
-    return steps_partial(pid)
-
-
-@app.post("/steps/reorder/<int:pid>")
-def reorder_steps(pid):
-    c = db()
-    current = [r[0] for r in c.execute("select id from steps where program_id=? order by pos,id", (pid,))]
-    try:
-        ordered = [int(value) for value in request.form.getlist("ids")]
-    except ValueError:
-        abort(400)
-    if len(ordered) != len(current) or set(ordered) != set(current):
-        abort(400)
-    for pos, sid in enumerate(ordered):
-        c.execute("update steps set pos=? where id=? and program_id=?", (pos, sid, pid))
-    c.commit()
-    return steps_partial(pid)
-
-
-@app.delete("/steps/<int:sid>")
-def del_step(sid):
-    pid = db().execute("select program_id from steps where id=?", (sid,)).fetchone()[0]
-    db().execute("delete from steps where id=?", (sid,))
-    db().commit()
-    return steps_partial(pid)
-
-
-@app.post("/programs/<int:pid>/rename")
-def rename_program(pid):
-    name = request.form.get("wk_rename", "").strip()
-    if name:
-        db().execute("update programs set name=? where id=?", (name, pid))
-        db().commit()
-    return "", 204
-
-
-@app.post("/steps/<int:sid>")
-def edit_step(sid):
-    secs = int(request.form.get("min") or 0) * 60 + int(request.form.get("sec") or 0)
-    if secs > 0:
-        db().execute("update steps set seconds=? where id=?", (secs, sid))
-        db().commit()
-    return "", 204
-
-
-# ---------- exercises ----------
-@app.get("/exercises")
-def exercises():
-    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
-    return render_template("exercises.html", tab="e", partial=exercises_partial(), categories=cats)
-
-
-@app.post("/exercises")
-def add_exercise():
-    name = request.form.get("ex_title", "").strip()
-    if name:
-        cid, created = category_from_form(request.form)
-        gif = save_gif(request.files.get("gif"), name, category_name(cid))
-        db().execute("insert into exercises(name,gif,category_id) values(?,?,?)", (name, gif, cid))
-        db().commit()
-        resp = make_response(exercises_partial())
-        if created:   # refresh so the new category appears in the pickers outside #list
-            resp.headers["HX-Refresh"] = "true"
-        return resp
-    return exercises_partial()
-
-
-@app.post("/exercises/instagram/preview")
+@app.post("/api/instagram/preview")
 def instagram_preview():
     clean_video_cache()
-    url = request.form.get("url", "").strip()
+    url = str((request.get_json(silent=True) or {}).get("url") or "").strip()
     if len(url) > 2048 or not instagram_url(url):
         return jsonify(error="Enter a valid Instagram post or Reel URL."), 400
     if not shutil.which("ffmpeg"):
@@ -451,11 +310,19 @@ def exercise_video_preview(token):
                                mimetype="video/mp4", max_age=0)
 
 
-@app.post("/exercises/instagram/save")
+@app.post("/api/instagram/release")
+def release_instagram_video():
+    """Called by the page when it is left, so preview files do not linger."""
+    release_video_cache(str((request.get_json(silent=True) or {}).get("token") or ""))
+    return "", 204
+
+
+@app.post("/api/instagram/save")
 def save_instagram_gif():
-    clean_video_cache()
-    name = request.form.get("ex_title", "").strip()
-    token = request.form.get("token", "")
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("token") or "")
+    clean_video_cache(keep=token)
+    name = str(data.get("name") or "").strip()
     if not name or len(name) > 120:
         return jsonify(error="Enter an exercise name."), 400
     source = video_cache_path(token, ".mp4")
@@ -465,12 +332,12 @@ def save_instagram_gif():
     try:
         with open(metadata_path, encoding="utf-8") as metadata:
             duration = float(json.load(metadata)["duration"])
-        start, end = float(request.form.get("start", "nan")), float(request.form.get("end", "nan"))
+        start, end = float(data.get("start", "nan")), float(data.get("end", "nan"))
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         return jsonify(error="Choose valid start and end points."), 400
     if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15:
         return jsonify(error="Choose a clip up to 15 seconds long within the video."), 400
-    output = video_cache_path(token, "-clip.gif")
+    output = video_cache_path(token, f"-clip-{uuid.uuid4().hex}.gif")
     try:
         subprocess.run([
             "ffmpeg", "-y", "-ss", f"{start:.4f}", "-i", source, "-t", f"{end-start:.4f}",
@@ -484,30 +351,188 @@ def save_instagram_gif():
         except OSError:
             pass
         return jsonify(error="GIF creation failed. Try a shorter section of the video."), 422
-    cid, created = category_from_form(request.form)
-    folder = category_folder(category_name(cid))
+    cid, created = category_from_form(data)
+    cat_name = category_name(cid)
+    folder = category_folder(cat_name)
     os.makedirs(folder, exist_ok=True)
     filename = unique_name(sanitize(name), ".gif", folder=folder)
     target = os.path.join(folder, filename)
     os.replace(output, target)
-    db().execute("insert into exercises(name,gif,category_id) values(?,?,?)",
-                 (name, rel_upload_path(target), cid))
+    new_id = db().execute("insert into exercises(name,gif,category_id) values(?,?,?)",
+                          (name, rel_upload_path(target), cid)).lastrowid
     db().commit()
-    for path in (source, metadata_path, video_cache_path(token, ".mp4")):
+    # Keep the cached video and metadata so more GIFs can be cut from the same
+    # preview. They are removed by the regular one-hour cache cleanup.
+    now = time.time()
+    for path in (source, metadata_path):
         try:
-            os.remove(path)
+            os.utime(path, (now, now))
         except OSError:
             pass
-    return jsonify(html=exercises_partial(), refresh=created)
+    return jsonify(exercise_json(new_id))
 
 
-@app.post("/exercises/<int:eid>")
-def rename_exercise(eid):
-    name = request.form.get("ex_title", "").strip()
-    row = db().execute("select * from exercises where id=?", (eid,)).fetchone()
-    if not (name and row):
-        return exercises_partial()
-    cid, created = category_from_form(request.form)
+@app.errorhandler(400)
+@app.errorhandler(404)
+def api_errors(e):
+    """Keep API errors machine-readable; other paths get Flask's normal pages."""
+    if request.path.startswith("/api/"):
+        msg = "Check the values and try again." if e.code == 400 else "Not found."
+        return jsonify(error=msg), e.code
+    return e
+
+
+# ---------- serializers ----------
+def exercise_json(eid):
+    r = db().execute("""select e.id, e.name, e.gif, e.category_id, c.name category from exercises e
+        left join categories c on c.id=e.category_id where e.id=?""", (eid,)).fetchone()
+    return dict(r) if r else None
+
+
+def steps_json(pid):
+    rows = db().execute("""select s.id, s.seconds, s.exercise_id, e.name, e.gif
+        from steps s left join exercises e on e.id=s.exercise_id
+        where s.program_id=? order by s.pos, s.id""", (pid,)).fetchall()
+    return [{"id": r["id"], "seconds": r["seconds"], "exercise_id": r["exercise_id"],
+             "name": r["name"] or "Rest", "gif": r["gif"],
+             "kind": "ex" if r["exercise_id"] else "rest"} for r in rows]
+
+
+def program_json(pid):
+    p = db().execute("select id, name from programs where id=?", (pid,)).fetchone() or abort(404)
+    return {"id": p["id"], "name": p["name"], "steps": steps_json(pid)}
+
+
+def body():
+    return request.get_json(silent=True) or {}
+
+
+def seconds_from(value):
+    try:
+        secs = int(value)
+    except (TypeError, ValueError):
+        abort(400)
+    if not 0 < secs <= MAX_SECONDS:
+        abort(400)
+    return secs
+
+
+# ---------- workouts ----------
+@app.get("/api/programs")
+def api_programs():
+    purge_video_cache()
+    rows = db().execute("""select p.id, p.name, coalesce(sum(s.seconds),0) total, count(s.id) steps
+        from programs p left join steps s on s.program_id=p.id group by p.id order by p.id""").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.post("/api/programs")
+def api_add_program():
+    name = str(body().get("name") or "").strip()
+    if not name:
+        return jsonify(error="Enter a workout name."), 400
+    pid = db().execute("insert into programs(name) values(?)", (name,)).lastrowid
+    db().commit()
+    return jsonify(id=pid, name=name, steps=0, total=0), 201
+
+
+@app.get("/api/programs/<int:pid>")
+def api_program(pid):
+    purge_video_cache()
+    return jsonify(program_json(pid))
+
+
+@app.patch("/api/programs/<int:pid>")
+def api_rename_program(pid):
+    name = str(body().get("name") or "").strip()
+    if not name:
+        return jsonify(error="Enter a workout name."), 400
+    db().execute("update programs set name=? where id=?", (name, pid))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.delete("/api/programs/<int:pid>")
+def api_del_program(pid):
+    db().execute("delete from steps where program_id=?", (pid,))
+    db().execute("delete from programs where id=?", (pid,))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.post("/api/programs/<int:pid>/steps")
+def api_add_step(pid):
+    data = body()
+    secs = seconds_from(data.get("seconds"))
+    ex_id = data.get("exercise_id")
+    if ex_id is not None:
+        if not db().execute("select 1 from exercises where id=?", (ex_id,)).fetchone():
+            return jsonify(error="That exercise no longer exists."), 400
+    pos = db().execute("select coalesce(max(pos),-1)+1 from steps where program_id=?", (pid,)).fetchone()[0]
+    db().execute("insert into steps(program_id,pos,exercise_id,seconds) values(?,?,?,?)", (pid, pos, ex_id, secs))
+    db().commit()
+    return jsonify(program_json(pid))
+
+
+@app.put("/api/programs/<int:pid>/order")
+def api_reorder(pid):
+    c = db()
+    current = [r[0] for r in c.execute("select id from steps where program_id=? order by pos,id", (pid,))]
+    try:
+        ordered = [int(v) for v in body().get("ids", [])]
+    except (TypeError, ValueError):
+        abort(400)
+    if len(ordered) != len(current) or set(ordered) != set(current):
+        abort(400)
+    for pos, sid in enumerate(ordered):
+        c.execute("update steps set pos=? where id=? and program_id=?", (pos, sid, pid))
+    c.commit()
+    return jsonify(program_json(pid))
+
+
+@app.patch("/api/steps/<int:sid>")
+def api_edit_step(sid):
+    db().execute("update steps set seconds=? where id=?", (seconds_from(body().get("seconds")), sid))
+    db().commit()
+    return jsonify(ok=True)
+
+
+@app.delete("/api/steps/<int:sid>")
+def api_del_step(sid):
+    db().execute("delete from steps where id=?", (sid,))
+    db().commit()
+    return jsonify(ok=True)
+
+
+# ---------- exercises ----------
+@app.get("/api/exercises")
+def api_exercises():
+    rows = db().execute("""select e.id, e.name, e.gif, e.category_id, c.name category from exercises e
+        left join categories c on c.id=e.category_id order by e.name collate nocase""").fetchall()
+    cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
+    return jsonify(exercises=[dict(r) for r in rows], categories=[dict(r) for r in cats])
+
+
+@app.post("/api/exercises")
+def api_add_exercise():
+    name = request.form.get("name", "").strip()
+    if not name:
+        return jsonify(error="Enter an exercise name."), 400
+    cid, _ = category_from_form(request.form)
+    gif = save_gif(request.files.get("gif"), name, category_name(cid))
+    eid = db().execute("insert into exercises(name,gif,category_id) values(?,?,?)", (name, gif, cid)).lastrowid
+    db().commit()
+    return jsonify(exercise_json(eid)), 201
+
+
+@app.patch("/api/exercises/<int:eid>")
+def api_edit_exercise(eid):
+    data = body()
+    name = str(data.get("name") or "").strip()
+    row = db().execute("select * from exercises where id=?", (eid,)).fetchone() or abort(404)
+    if not name:
+        return jsonify(error="Enter an exercise name."), 400
+    cid, _ = category_from_form(data)
     gif = row["gif"]
     if gif:
         ext = os.path.splitext(gif)[1]
@@ -522,14 +547,11 @@ def rename_exercise(eid):
                 gif = rel_upload_path(target)
     db().execute("update exercises set name=?, gif=?, category_id=? where id=?", (name, gif, cid, eid))
     db().commit()
-    resp = make_response(exercises_partial())
-    if created:
-        resp.headers["HX-Refresh"] = "true"
-    return resp
+    return jsonify(exercise_json(eid))
 
 
-@app.delete("/exercises/<int:eid>")
-def del_exercise(eid):
+@app.delete("/api/exercises/<int:eid>")
+def api_del_exercise(eid):
     r = db().execute("select gif from exercises where id=?", (eid,)).fetchone()
     if r and r["gif"]:
         try:
@@ -539,7 +561,7 @@ def del_exercise(eid):
     db().execute("delete from steps where exercise_id=?", (eid,))
     db().execute("delete from exercises where id=?", (eid,))
     db().commit()
-    return exercises_partial()
+    return jsonify(ok=True)
 
 
 @app.get("/media/<path:f>")
@@ -547,43 +569,52 @@ def media(f):
     return send_from_directory(UPLOADS, f, max_age=0)
 
 
-@app.get("/manifest.webmanifest")
-def manifest():
-    return send_from_directory(app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json")
-
-
-# ---------- calendar ----------
-@app.get("/calendar")
-def calendar():
+# ---------- calendar & completion ----------
+@app.get("/api/calendar")
+def api_calendar():
+    purge_video_cache()
     rows = db().execute("select day, name from completions order by id").fetchall()
     done = {}
     for row in rows:
         done.setdefault(row["day"], []).append(row["name"])
-    recent = db().execute("select day, name from completions order by id desc limit 10").fetchall()
-    return render_template("calendar.html", tab="c", done=done, recent=recent)
+    recent = db().execute("select day, name, seconds from completions order by id desc limit 10").fetchall()
+    return jsonify(done=done, recent=[dict(r) for r in recent])
 
 
-@app.post("/run/<int:pid>/complete")
-def complete(pid):
+@app.post("/api/programs/<int:pid>/complete")
+def api_complete(pid):
     """Called by the player only when a workout ran from start to finish."""
     p = db().execute("select name from programs where id=?", (pid,)).fetchone() or abort(404)
     try:
-        day = date.fromisoformat(request.form.get("day", "")).isoformat()
+        day = date.fromisoformat(str(body().get("day") or "")).isoformat()
     except ValueError:
         abort(400)
-    db().execute("insert into completions(program_id,name,day,ts) values(?,?,?,datetime('now'))", (pid, p["name"], day))
+    seconds = db().execute("select coalesce(sum(seconds),0) from steps where program_id=?", (pid,)).fetchone()[0]
+    db().execute("insert into completions(program_id,name,day,ts,seconds) values(?,?,?,datetime('now'),?)",
+                 (pid, p["name"], day, seconds))
     db().commit()
-    return "", 204
+    return jsonify(ok=True)
 
 
-# ---------- player ----------
-@app.get("/run/<int:pid>")
-def run(pid):
-    p = db().execute("select * from programs where id=?", (pid,)).fetchone() or abort(404)
-    steps = [{"name": s["name"] or "Rest", "seconds": s["seconds"],
-              "gif": "/media/" + quote(s["gif"]) if s["gif"] else None,
-              "kind": "ex" if s["exercise_id"] else "rest"} for s in get_steps(pid)]
-    return render_template("run.html", p=p, steps=steps)
+# ---------- single-page app ----------
+@app.get("/", defaults={"path": ""})
+@app.get("/<path:path>")
+def spa(path):
+    if path.startswith(("api/", "media/", "static/")):
+        abort(404)
+    if path and os.path.isfile(os.path.join(WEB_DIR, path)):
+        hashed = path.startswith("assets/")
+        return send_from_directory(WEB_DIR, path, max_age=31536000 if hashed else 0)
+    if not os.path.isfile(os.path.join(WEB_DIR, "index.html")):
+        return ("Frontend not built. Run `npm run build` in frontend/ (or use the Docker image).", 503)
+    resp = send_from_directory(WEB_DIR, "index.html", max_age=0)
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return send_from_directory(app.static_folder, "manifest.webmanifest", mimetype="application/manifest+json")
 
 
 if __name__ == "__main__":

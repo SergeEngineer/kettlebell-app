@@ -12,12 +12,12 @@ From the project folder:
 python -m venv .venv
 source .venv/bin/activate
 pip install flask gunicorn debugpy yt-dlp
-curl -L -o static/htmx.min.js https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js
+cd frontend && npm install && cd ..
 ```
 
-`yt-dlp` and `ffmpeg` are needed to load Instagram videos and convert them into GIFs. Ensure `ffmpeg` is installed on your host system (e.g. `sudo pacman -S ffmpeg` on Arch/Omarchy).
+The frontend needs Node.js 22 or newer (`sudo pacman -S nodejs npm` on Arch/Omarchy).
 
-The last command downloads htmx. The Dockerfile does this during the image build, but a local run outside Docker needs the file in place.
+`yt-dlp` and `ffmpeg` are needed to load Instagram videos and convert them into GIFs. Ensure `ffmpeg` is installed on your host system (e.g. `sudo pacman -S ffmpeg` on Arch/Omarchy).
 
 Create `pyrightconfig.json` in the project root so Zed finds the environment:
 
@@ -29,12 +29,27 @@ Then restart the language server (command palette → `editor: restart language 
 
 ## 2. Run the app without the debugger
 
+Two terminals: Flask serves the API, Vite serves the app with hot reload and forwards `/api`, `/media` and `/static` to Flask.
+
 ```bash
+# terminal 1: API
 source .venv/bin/activate
 DATA_DIR=./data FLASK_DEBUG=1 flask --app app run --host 0.0.0.0 --port 8088
+
+# terminal 2: frontend
+cd frontend && npm run dev
 ```
 
-Open http://localhost:8088. `DATA_DIR=./data` keeps the test database and GIFs inside the project instead of `/data`.
+Open http://localhost:5173. `DATA_DIR=./data` keeps the test database and GIFs inside the project instead of `/data`.
+
+To check the production setup instead (Flask serving the built app, one process):
+
+```bash
+cd frontend && npm run build && cd ..
+WEB_DIR=./frontend/dist DATA_DIR=./data flask --app app run --port 8088
+```
+
+Type-check the frontend with `cd frontend && npm run check`.
 
 ## 3. Debug with breakpoints
 
@@ -53,7 +68,8 @@ Create `.zed/debug.json`:
     "env": {
       "FLASK_APP": "app",
       "FLASK_DEBUG": "1",
-      "DATA_DIR": "${ZED_WORKTREE_ROOT}/data"
+      "DATA_DIR": "${ZED_WORKTREE_ROOT}/data",
+      "WEB_DIR": "${ZED_WORKTREE_ROOT}/frontend/dist"
     }
   }
 ]
@@ -63,7 +79,7 @@ Steps:
 
 1. Open `app.py` and click in the gutter next to a line number to set a breakpoint, for example inside `add_step`.
 2. Open the debug panel (or press `F4`) and start **Flask app**.
-3. Open http://localhost:8088 in a browser and trigger the action. Zed pauses on the breakpoint.
+3. Open http://localhost:5173 (with `npm run dev` running) in a browser and trigger the action. Zed pauses on the breakpoint.
 4. Use the step controls to step over, step into or continue, and inspect variables in the panel.
 
 `--no-reload` is required. Flask's auto-reloader starts a second process, and breakpoints become unreliable there.
@@ -112,7 +128,7 @@ The `./data` folder is mounted as `/data`, the same way it will be on Unraid, so
 
 **Desktop browser**
 
-1. Open http://localhost:8088 in Chromium.
+1. Open http://localhost:5173 in Chromium.
 2. Press `Ctrl+Shift+M` to open the device toolbar.
 3. Pick an iPhone preset such as iPhone 15 Pro.
 
@@ -121,8 +137,8 @@ You will see the safe areas, tab bar and player at phone size.
 **Real phone**
 
 1. Connect the phone to the same Wi-Fi as your Omarchy machine.
-2. Open `http://<omarchy-ip>:8088` in Safari. Find the IP with `ip a`.
-3. If the page does not load, allow the port in the firewall: `sudo ufw allow 8088/tcp`.
+2. Open `http://<omarchy-ip>:5173` in Safari. Find the IP with `ip a`.
+3. If the page does not load, allow the ports in the firewall: `sudo ufw allow 5173/tcp` and `sudo ufw allow 8088/tcp`.
 4. Use **Share → Add to Home Screen** for the full-screen app look.
 
 Sound works on the phone after the first tap. Keeping the screen awake needs HTTPS, so it will not work over plain HTTP.
@@ -132,7 +148,8 @@ Sound works on the phone after the first tap. Keeping the screen awake needs HTT
 | Problem | Fix |
 |---|---|
 | `flask` import still unresolved | Check that `.venv` exists and `pyrightconfig.json` is in the project root, then restart the language server |
-| Page loads but buttons do nothing | `static/htmx.min.js` is missing. Run the `curl` command in section 1 |
+| Page says `Frontend not built` | Run `npm run build` in `frontend/` and start Flask with `WEB_DIR=./frontend/dist`, or use `npm run dev` on port 5173 |
+| Page loads but lists are empty | Flask is not running on port 8088, so Vite's `/api` proxy has nothing to talk to |
 | Breakpoints are never hit | Make sure `--no-reload` is in the debug args and you started the debugger, not a normal run |
 | Missing `yt-dlp` error on Instagram video load | Run `pip install yt-dlp` in your active `.venv` (or rebuild the Docker container) |
 | Missing `ffmpeg` error | Install ffmpeg with `sudo pacman -S ffmpeg` (or your system's package manager) |

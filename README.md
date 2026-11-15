@@ -7,15 +7,15 @@ A small web app for building kettlebell workouts and running them with a countdo
 **Exercises**
 - Save an exercise as a name, a category and a GIF showing the movement. Pick an existing category or create a new one while saving. Each category gets its own folder under `/data/uploads/` (for example `/data/uploads/Kettlebell/Kettlebell Swing.gif`); GIFs are renamed when you rename the exercise.
 - Create a GIF from a public Instagram post or Reel by loading its URL, previewing the video, and choosing the start and end frames (up to 15 seconds).
-- Change an exercise's category with ✎; its GIF moves to the new category folder.
-- Delete exercises you no longer need.
+- Tap an exercise to rename it or change its category; its GIF moves to the new category folder. Tap the thumbnail to view the GIF full screen.
+- Swipe an exercise left to delete it.
 
 **Workouts**
 - Create a workout and build it from steps. Each step is either an exercise or a rest, with a duration in minutes and seconds.
 - When adding an exercise step, filter the picker by category and choose from animated GIF thumbnails.
-- Reorder steps by holding and dragging them, or use the up and down buttons; remove steps you don't want.
+- Reorder steps by dragging the grip handle on the right of a row (or focus the handle and use the arrow keys). Rows spring out of the way as you drag.
 - See the total workout time.
-- Rename a workout with the ✎ icon beside its title, and swipe a workout left on the home screen to delete it. Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
+- Rename a workout from the editor's navigation bar, and swipe a workout left on the home screen to delete it. Tap a step to expand it and change its time with iOS-style scroll wheels (saved automatically), and swipe a step left to delete it, like in iOS Mail. A step always shows its exercise's name, and exercises can be renamed in the Exercises tab.
 
 Example workout:
 
@@ -31,7 +31,7 @@ Example workout:
 - Full-screen dark view with a circular progress ring and a large countdown.
 - Shows the exercise name and its looping GIF.
 - During a rest, shows the upcoming exercise's GIF and name so you can get ready.
-- Shows what is coming next, with pause, skip and back controls.
+- Shows what is coming next, with pause, skip and back controls. Swipe left or right on the screen to skip or go back.
 - A 5 second "Get ready" countdown runs before the first step.
 - Beeps in the last 3 seconds and at every change. Vibrates on devices that support it.
 - Keeps the screen awake while running (see notes below).
@@ -40,38 +40,56 @@ Example workout:
 - A contribution-style calendar (last 12 months). A day turns green when you finish a workout from start to finish; two or more finished workouts in a day show a brighter green.
 - A workout only counts when its last step's timer runs out. Workouts you leave early, or skip through to the end, are not counted.
 - Tap a day to see which workouts you completed. The tab also shows your totals and current streak.
+- The Recent list shows each completed workout with its total duration, for example `Kettlebell Exercises (20 min)`.
 
 ## Tech stack
 
 | Part | Choice |
 |---|---|
-| Backend | Python 3.12, Flask, gunicorn |
-| Frontend | Server-rendered Jinja templates + HTMX |
-| Timer | Plain JavaScript in the browser |
+| Frontend | Single-page app: Svelte 5 + TypeScript, built with Vite |
+| iOS look and feel | Framework7 (iOS theme): large titles, tab bar, page transitions and swipe-back, swipe-to-delete rows, wheel pickers, popups |
+| Gestures and springs | `@use-gesture/vanilla` (drag to reorder, swipe in the player) and Motion (springs) |
+| Timer | TypeScript in the browser (`Player.svelte`) |
+| Backend | Python 3.12, Flask (JSON API under `/api`), gunicorn |
 | Storage | SQLite + uploaded GIFs, both in the `/data` volume |
-| Packaging | Docker |
+| Packaging | Docker, multi-stage: Node builds the frontend, the Python image serves it |
 
 ## Project layout
 
 ```
 kettlebell/
-├── app.py                 Flask routes and database
-├── templates/             Pages and HTMX partials
-│   ├── base.html          Layout with the iOS style tab bar
-│   ├── index.html         Workouts list
-│   ├── program.html       Workout editor
-│   ├── exercises.html     Exercise library
-│   ├── run.html           Countdown player
-│   └── _*.html            Partials swapped in by HTMX
-├── static/
-│   ├── app.css            iOS look and feel
-│   └── htmx.min.js        Downloaded during the Docker build
-├── Dockerfile
+├── app.py                     Flask JSON API, database, and serves the built app
+├── frontend/                  Svelte + TypeScript source
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts         Dev server proxies /api, /media, /static to Flask
+│   └── src/
+│       ├── main.ts, App.svelte, routes.ts, app.css, types.ts
+│       ├── pages/             Workouts, Workout (editor), AddStep, Exercises,
+│       │                      ExerciseForm, InstagramStudio, Calendar, Player
+│       └── lib/               api.ts, state.svelte.ts, reorder.ts (drag gesture),
+│                              DurationPicker, GifViewer, CategoryFields, awake.ts
+├── static/                    icon-180.png, nosleep.mp4, manifest.webmanifest
+├── Dockerfile                 Multi-stage build
 ├── .dockerignore
 ├── docker-compose.yml
 ├── README.md
-└── DEBUGGING_IN_ZED.md    Running and debugging locally
+└── DEBUGGING_IN_ZED.md        Running and debugging locally
 ```
+
+### API
+
+| Route | Purpose |
+|---|---|
+| `GET/POST /api/programs`, `GET/PATCH/DELETE /api/programs/<id>` | Workouts |
+| `POST /api/programs/<id>/steps`, `PUT /api/programs/<id>/order` | Add a step, reorder steps |
+| `PATCH/DELETE /api/steps/<id>` | Change a step's time, delete a step |
+| `GET/POST /api/exercises`, `PATCH/DELETE /api/exercises/<id>` | Exercise library (POST is multipart for the GIF) |
+| `POST /api/instagram/preview`, `/save`, `/release` | Instagram clip studio |
+| `GET /api/calendar`, `POST /api/programs/<id>/complete` | Calendar and completed workouts |
+| `GET /media/<path>` | Uploaded GIFs |
+
+Existing databases and GIFs work unchanged: the schema and the `/data/uploads/<Category>/` layout have not changed.
 
 ## Run with Docker
 
@@ -184,10 +202,13 @@ Note if you updating the app to the latest version by replacing all files from r
   - **Low Power Mode** shortens auto-lock to 30 seconds and can override this.
   - The guaranteed fallback is Settings → Display & Brightness → Auto-Lock → **Never** (switch it back afterwards).
   - To get HTTPS on Unraid, put the app behind Nginx Proxy Manager (Let's Encrypt), a Cloudflare tunnel, or Tailscale (`tailscale serve`, with HTTPS certificates enabled in the Tailscale admin console).
+- **Navigation is in memory:** the app does not change the browser URL, so a refresh returns to the Workouts tab. Home Screen launches always start there.
 - **Full screen on iPhone:** Safari on iPhone does not allow websites to hide the address bar. For a true full-screen player, use **Share → Add to Home Screen** and open the app from the Home Screen icon. On Android, iPad and desktop, tapping "Tap to begin" enters full screen automatically, and "Done" exits it.
 - **Sound on iPhone:** Safari only allows sound after a tap, so the player starts with a "Tap to begin" screen.
+- **Updating from the HTMX version:** delete the old `templates/` folder and `static/app.css` / `static/htmx.min.js`; keep `static/icon-180.png`, `static/nosleep.mp4` and `static/manifest.webmanifest`. The first `docker build` takes longer because it installs the npm packages.
 - **No login:** the app has no authentication. Keep it on your home network or behind a VPN.
 - **GIF uploads:** `.gif`, `.webp`, `.png` and `.jpg` files up to 30 MB. Files are stored in `/data/uploads/<Category>/` and the folder is created automatically when you add a category.
+- **Instagram video cache:** downloaded previews are kept in `/data/video-cache` while you stay on the Exercises page. They are deleted when you leave the page, with a one-hour cleanup as a fallback.
 
 ## Configuration
 
