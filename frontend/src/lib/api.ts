@@ -13,7 +13,11 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export const fmt = (s: number) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-export const mins = (s: number) => (s > 0 ? Math.max(1, Math.floor((s + 30) / 60)) + ' min' : '');
+/** 1200 -> "20 minutes", 450 -> "7 minutes 30 seconds", 0 -> "" */
+export function duration(s: number) {
+  const m = Math.floor(s / 60), r = s % 60;
+  return [m && `${m} ${m === 1 ? 'minute' : 'minutes'}`, r && `${r} ${r === 1 ? 'second' : 'seconds'}`].filter(Boolean).join(' ');
+}
 export const media = (gif: string | null) => (gif ? '/media/' + gif.split('/').map(encodeURIComponent).join('/') : null);
 
 export const api = {

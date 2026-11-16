@@ -103,3 +103,10 @@ li.lifting { position: relative; z-index: 5; background: var(--f7-list-bg-color,
 
 .thumbbtn { display: block; border-radius: 9px; }
 .thumbbtn:focus-visible { outline: 2px solid var(--f7-theme-color); }
+
+/* ---- calendar day summary ---- */
+.daycard { margin: 8px 16px 0; padding: 12px 16px; border-radius: 12px; background: var(--f7-list-bg-color, #fff); }
+.dayhead { display: flex; flex-direction: column; gap: 2px; }
+.dayhead span, .dayrow .dim { color: #8e8e93; font-size: 14px; }
+.dayrow { display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; margin-top: 8px; border-top: 1px solid rgba(142, 142, 147, .25); }
+.dayrow .dim { white-space: nowrap; }

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { untrack, tick } from 'svelte';
   import { Page, Navbar, Block, List, ListItem, f7 } from 'framework7-svelte';
-  import { api, mins } from '../lib/api';
+  import { api, duration } from '../lib/api';
   import { ui } from '../lib/state.svelte';
-  import type { CalendarData } from '../types';
+  import type { CalendarData, Completion } from '../types';
 
   const WEEKS = 53;
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -43,11 +43,16 @@
     while (data.done[key(cur)]) { n++; cur.setDate(cur.getDate() - 1); }
     return n;
   });
-  const detail = $derived.by(() => {
-    if (!picked) return 'Tap a day to see what you completed.';
-    const names = data.done[picked];
-    const label = new Date(picked + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    return `${label} — ${names ? names.join(', ') : 'no workout completed'}`;
+  const todayKey = key(today);
+  const day = $derived.by(() => {
+    const k = picked ?? todayKey;
+    const items: Completion[] = data.done[k] ?? [];
+    const secs = items.reduce((n, i) => n + i.seconds, 0);
+    const label = new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const summary = items.length
+      ? `${items.length} ${items.length === 1 ? 'workout' : 'workouts'}${secs ? ' · ' + duration(secs) : ''}`
+      : k === todayKey ? 'Nothing completed yet today' : 'No workout completed';
+    return { label, summary, items };
   });
 
   async function load() {
@@ -68,19 +73,24 @@
         {#each cells as c (c.k)}
           {#if c.future}<div class="gap"></div>{:else}
             <button class="cell" class:on={c.n > 0} class:on2={c.n > 1} class:today={c.today} class:picked={picked === c.k}
-                    aria-label={`${c.k}: ${c.n} completed`} onclick={() => (picked = c.k)}></button>
+                    aria-label={`${c.k}: ${c.n} ${c.n === 1 ? 'workout' : 'workouts'} completed`} onclick={() => (picked = c.k)}></button>
           {/if}
         {/each}
       </div>
     </div>
   </div>
-  <Block class="daydetail" aria-live="polite">{detail}</Block>
+  <div class="daycard" aria-live="polite">
+    <div class="dayhead"><strong>{day.label}</strong><span>{day.summary}</span></div>
+    {#each day.items as it}
+      <div class="dayrow"><span>{it.name}</span>{#if it.seconds}<span class="dim">{duration(it.seconds)}</span>{/if}</div>
+    {/each}
+  </div>
 
   <div class="block-title">Recent</div>
   {#if data.recent.length}
     <List strong inset dividersIos>
       {#each data.recent as r}
-        <ListItem title={r.name + (r.seconds ? ` (${mins(r.seconds)})` : '')} after={r.day} />
+        <ListItem title={r.name + (r.seconds ? ` (${duration(r.seconds)})` : '')} after={r.day} />
       {/each}
     </List>
   {:else}

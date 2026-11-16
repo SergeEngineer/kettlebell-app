@@ -573,10 +573,10 @@ def media(f):
 @app.get("/api/calendar")
 def api_calendar():
     purge_video_cache()
-    rows = db().execute("select day, name from completions order by id").fetchall()
+    rows = db().execute("select day, name, seconds from completions order by id").fetchall()
     done = {}
     for row in rows:
-        done.setdefault(row["day"], []).append(row["name"])
+        done.setdefault(row["day"], []).append({"name": row["name"], "seconds": row["seconds"]})
     recent = db().execute("select day, name, seconds from completions order by id desc limit 10").fetchall()
     return jsonify(done=done, recent=[dict(r) for r in recent])
 
