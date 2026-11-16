@@ -56,8 +56,9 @@
   <Actions opened={menu} onActionsClosed={() => (menu = false)}>
     <ActionsGroup>
       <ActionsLabel>New exercise</ActionsLabel>
-      <ActionsButton onClick={() => (uploading = true)}>Upload a GIF</ActionsButton>
-      <ActionsButton onClick={() => (instagram = true)}>Create from an Instagram video</ActionsButton>
+      <!-- F7's ActionsButton only calls a lowercase `onclick` (and that replaces its auto-close), so close the menu here -->
+      <ActionsButton onclick={() => { menu = false; uploading = true; }}>Upload a GIF</ActionsButton>
+      <ActionsButton onclick={() => { menu = false; instagram = true; }}>Create from an Instagram video</ActionsButton>
     </ActionsGroup>
     <ActionsGroup><ActionsButton strong close>Cancel</ActionsButton></ActionsGroup>
   </Actions>
