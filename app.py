@@ -283,7 +283,7 @@ def instagram_preview():
             except OSError:
                 pass
         return jsonify(token=token, duration=duration, fps=fps,
-                       video_url=f"/exercise-video-preview/{token}")
+                       video_url=f"/api/instagram/video/{token}")
     except ModuleNotFoundError as exc:
         if exc.name in ("yt_dlp", "yt_dip"):
             return jsonify(error="yt-dlp is missing. Run 'pip install yt-dlp' in your environment or rebuild the container, then retry."), 503
@@ -304,7 +304,7 @@ def instagram_preview():
         return jsonify(error=f"Could not load this Instagram video: {detail}. Check that the post is public and try again."), 422
 
 
-@app.get("/exercise-video-preview/<token>")
+@app.get("/api/instagram/video/<token>")
 def exercise_video_preview(token):
     return send_from_directory(VIDEO_CACHE, os.path.basename(video_cache_path(token, ".mp4")),
                                mimetype="video/mp4", max_age=0)
