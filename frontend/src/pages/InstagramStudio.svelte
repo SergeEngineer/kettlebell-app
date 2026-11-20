@@ -4,6 +4,7 @@
   import { api } from '../lib/api';
   import CategoryFields from '../lib/CategoryFields.svelte';
   import CropEditor from '../lib/CropEditor.svelte';
+  import RangeSlider from '../lib/RangeSlider.svelte';
   import type { Category, Crop, IgPreview } from '../types';
 
   let { opened = $bindable(false), categories, onsaved }:
@@ -12,8 +13,6 @@
   let url = $state(''), status = $state(''), loading = $state(false), saving = $state(false);
   let clip = $state<IgPreview | null>(null);
   let video: HTMLVideoElement | undefined = $state();
-  let startInput: HTMLInputElement | undefined = $state();
-  let endInput: HTMLInputElement | undefined = $state();
   let start = $state(0), end = $state(5), name = $state(''), category = $state(''), newCategory = $state('');
   let previewing = $state<'start' | 'end'>('start');
   let cropping = $state(false), crop = $state<Crop | null>(null);
@@ -39,18 +38,6 @@
   const step = $derived(1 / Math.max(1, clip?.fps ?? 24));
   const minClip = $derived(Math.max(MIN_CLIP, 3 / Math.max(1, clip?.fps ?? 24)));
   const t = (x: number) => `${Math.floor(x / 60)}:${(x % 60).toFixed(2).padStart(5, '0')}`;
-
-  // Keep the two ranges authoritative in state, but write their DOM values from
-  // tiny isolated effects.  Unrelated form state (name/category/validation) can
-  // no longer re-render the ranges and visually nudge a thumb.
-  $effect(() => {
-    const el = startInput;
-    if (el && clip) el.value = String(start);
-  });
-  $effect(() => {
-    const el = endInput;
-    if (el && clip) el.value = String(end);
-  });
 
   function clamp(which: 'start' | 'end', value: number) {
     if (!clip) return value;
@@ -92,13 +79,11 @@
     } catch (err) { status = (err as Error).message; }
     finally { loading = false; }
   }
-  function seek(which: 'start' | 'end', event: Event) {
+  function setRange(which: 'start' | 'end', value: number) {
     if (!clip) return;
-    const input = event.currentTarget as HTMLInputElement;
-    const next = clamp(which, Number(input.value));
+    const next = clamp(which, value);
     if (which === 'start') start = next;
     else end = next;
-    input.value = String(next);
     previewing = which;
     freezePreview(next);
   }
@@ -155,16 +140,14 @@
         {/if}
         <p class="help">Previewing the {previewing} frame</p>
         <div class="list inset-strong form-list"><ul>
-          <li class="item-content"><div class="item-inner"><div class="sliderrow">
-            <label for="ig-start">Start <output>{t(start)}</output></label>
-            <input id="ig-start" bind:this={startInput} type="range" min="0" max={clip.duration} {step}
-                   oninput={(e) => seek('start', e)} onchange={(e) => seek('start', e)}>
-          </div></div></li>
-          <li class="item-content"><div class="item-inner"><div class="sliderrow">
-            <label for="ig-end">End <output>{t(end)}</output></label>
-            <input id="ig-end" bind:this={endInput} type="range" min="0" max={clip.duration} {step}
-                   oninput={(e) => seek('end', e)} onchange={(e) => seek('end', e)}>
-          </div></div></li>
+          <li class="item-content"><div class="item-inner">
+            <RangeSlider id="ig-start" label="Start" text={t(start)} value={start} min={0} max={clip.duration} {step}
+                         onValue={(v) => setRange('start', v)} />
+          </div></li>
+          <li class="item-content"><div class="item-inner">
+            <RangeSlider id="ig-end" label="End" text={t(end)} value={end} min={0} max={clip.duration} {step}
+                         onValue={(v) => setRange('end', v)} />
+          </div></li>
         </ul></div>
         <p class="help">Selected length: {(end - start).toFixed(2)} s (up to 15 s)</p>
         <div class="crop-row">
