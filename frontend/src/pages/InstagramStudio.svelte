@@ -12,6 +12,8 @@
   let url = $state(''), status = $state(''), loading = $state(false), saving = $state(false);
   let clip = $state<IgPreview | null>(null);
   let video: HTMLVideoElement | undefined = $state();
+  let startInput: HTMLInputElement | undefined = $state();
+  let endInput: HTMLInputElement | undefined = $state();
   let start = $state(0), end = $state(5), name = $state(''), category = $state(''), newCategory = $state('');
   let previewing = $state<'start' | 'end'>('start');
   let cropping = $state(false), crop = $state<Crop | null>(null);
@@ -33,8 +35,44 @@
   });
 
   const MAX = 15;
+  const MIN_CLIP = 0.5;   // at least six frames at 12 fps, so a save is never a single still
   const step = $derived(1 / Math.max(1, clip?.fps ?? 24));
+  const minClip = $derived(Math.max(MIN_CLIP, 3 / Math.max(1, clip?.fps ?? 24)));
   const t = (x: number) => `${Math.floor(x / 60)}:${(x % 60).toFixed(2).padStart(5, '0')}`;
+
+  // Keep the two ranges authoritative in state, but write their DOM values from
+  // tiny isolated effects.  Unrelated form state (name/category/validation) can
+  // no longer re-render the ranges and visually nudge a thumb.
+  $effect(() => {
+    const el = startInput;
+    if (el && clip) el.value = String(start);
+  });
+  $effect(() => {
+    const el = endInput;
+    if (el && clip) el.value = String(end);
+  });
+
+  function clamp(which: 'start' | 'end', value: number) {
+    if (!clip) return value;
+    if (which === 'start') {
+      const lo = Math.max(0, end - MAX);
+      const hi = Math.min(end - minClip, clip.duration - minClip);
+      return hi < lo ? lo : Math.max(lo, Math.min(value, hi));
+    }
+    const lo = start + minClip;
+    const hi = Math.min(clip.duration, start + MAX);
+    return hi < lo ? hi : Math.min(hi, Math.max(value, lo));
+  }
+
+  // Focusing the save form must not let a still-in-flight video seek drift the
+  // preview forward while the user is filling in the fields.
+  function freezePreview(at = previewing === 'end' ? end : start) {
+    if (!video || !clip || cropping || video.readyState < 1) return;
+    video.pause();
+    const target = Math.max(0, Math.min(clip.duration, at));
+    if (Math.abs(video.currentTime - target) > 0.001) video.currentTime = target;
+  }
+  const lockPreview = () => freezePreview();
 
   function release() {
     if (clip) api.igRelease(clip.token);
@@ -57,20 +95,16 @@
   function seek(which: 'start' | 'end', event: Event) {
     if (!clip) return;
     const input = event.currentTarget as HTMLInputElement;
-    const value = Number(input.value);
-    const s = step;
-    if (which === 'start') {
-      start = Math.max(0, Math.max(Math.min(value, end - s), end - MAX));
-      input.value = String(start);
-    } else {
-      end = Math.min(clip.duration, Math.min(Math.max(value, start + s), start + MAX));
-      input.value = String(end);
-    }
+    const next = clamp(which, Number(input.value));
+    if (which === 'start') start = next;
+    else end = next;
+    input.value = String(next);
     previewing = which;
-    if (video) { video.pause(); if (video.readyState >= 1) video.currentTime = which === 'start' ? start : end; }
+    freezePreview(next);
   }
   async function save(e: Event) {
     e.preventDefault(); if (!clip || saving) return;
+    lockPreview();
     if (missing.length) {
       attempted = true; statusError = true;
       status = `Missing: ${missing.join(', ')}.`;
@@ -123,11 +157,13 @@
         <div class="list inset-strong form-list"><ul>
           <li class="item-content"><div class="item-inner"><div class="sliderrow">
             <label for="ig-start">Start <output>{t(start)}</output></label>
-            <input id="ig-start" type="range" min="0" max={clip.duration} {step} value={start} oninput={(e) => seek('start', e)}>
+            <input id="ig-start" bind:this={startInput} type="range" min="0" max={clip.duration} {step}
+                   oninput={(e) => seek('start', e)} onchange={(e) => seek('start', e)}>
           </div></div></li>
           <li class="item-content"><div class="item-inner"><div class="sliderrow">
             <label for="ig-end">End <output>{t(end)}</output></label>
-            <input id="ig-end" type="range" min="0" max={clip.duration} {step} value={end} oninput={(e) => seek('end', e)}>
+            <input id="ig-end" bind:this={endInput} type="range" min="0" max={clip.duration} {step}
+                   oninput={(e) => seek('end', e)} onchange={(e) => seek('end', e)}>
           </div></div></li>
         </ul></div>
         <p class="help">Selected length: {(end - start).toFixed(2)} s (up to 15 s)</p>
@@ -137,7 +173,7 @@
         </div>
         {#if crop}<p class="help">Crop keeps {Math.round(crop.w * 100)}% × {Math.round(crop.h * 100)}% of each frame.</p>{/if}
 
-        <form onsubmit={save} novalidate>
+        <form onsubmit={save} novalidate onfocusin={lockPreview} onpointerdown={lockPreview}>
           <div class="list inset-strong form-list"><ul>
             <li class="item-content item-input" class:field-invalid={invalid.name}><div class="item-inner"><div class="item-input-wrap">
               <input type="text" placeholder="Exercise name" maxlength="120" autocapitalize="words" bind:value={name}>

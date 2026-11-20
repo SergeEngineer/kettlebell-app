@@ -13,6 +13,7 @@ os.makedirs(VIDEO_CACHE, exist_ok=True)
 os.makedirs(THUMBS, exist_ok=True)
 ALLOWED = {".gif", ".webp", ".png", ".jpg", ".jpeg"}
 MAX_SECONDS = 99 * 60 + 59
+MIN_GIF_SECONDS = 0.25
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
@@ -395,12 +396,16 @@ def save_instagram_gif():
         return jsonify(error="The video preview expired. Load the Instagram URL again."), 400
     try:
         with open(metadata_path, encoding="utf-8") as metadata:
-            duration = float(json.load(metadata)["duration"])
+            info = json.load(metadata)
+        duration = float(info["duration"])
+        fps = max(1.0, float(info.get("fps") or 30.0))
         start, end = float(data.get("start", "nan")), float(data.get("end", "nan"))
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         return jsonify(error="Choose valid start and end points."), 400
     if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15.001:
         return jsonify(error="Choose a clip up to 15 seconds long within the video."), 400
+    if end - start < max(MIN_GIF_SECONDS, 3 / fps):
+        return jsonify(error="The clip is too short. Drag the sliders further apart and try again."), 400
     try:
         crop_filter = normalized_crop(data.get("crop"))
     except ValueError:
