@@ -1,14 +1,26 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { Page, Navbar, NavRight, Link, List, ListItem, Block, SwipeoutActions, SwipeoutButton, Actions, ActionsGroup, ActionsLabel, ActionsButton, f7 } from 'framework7-svelte';
-  import { api, media as mediaUrl } from '../lib/api';
+  import { Page, Navbar, NavRight, NavLeft, Link, List, ListItem, Block, SwipeoutActions, SwipeoutButton, Actions, ActionsGroup, ActionsLabel, ActionsButton, Popup, View, f7 } from 'framework7-svelte';
+  import { api, media as mediaUrl, thumb } from '../lib/api';
   import { ui, bump, openGif } from '../lib/state.svelte';
+  import CropEditor from '../lib/CropEditor.svelte';
   import ExerciseForm from './ExerciseForm.svelte';
   import InstagramStudio from './InstagramStudio.svelte';
-  import type { Category, Exercise } from '../types';
+  import type { Category, Crop, Exercise } from '../types';
 
   let exercises = $state<Exercise[] | null>(null), categories = $state<Category[]>([]);
   let menu = $state(false), uploading = $state(false), instagram = $state(false), editing = $state<Exercise | null>(null);
+  let cropping = $state<Exercise | null>(null), cropBusy = $state(false), pendingCrop = $state<Exercise | null>(null);
+  let versions = $state<Record<number, number>>({});
+
+  const gifSrc = (e: Exercise) => {
+    const url = mediaUrl(e.gif);
+    return url && versions[e.id] ? `${url}?v=${versions[e.id]}` : url;
+  };
+  const thumbSrc = (e: Exercise) => {
+    const url = thumb(e.gif);
+    return url && versions[e.id] ? `${url}&v=${versions[e.id]}` : url;
+  };
 
   async function load() {
     try { const r = await api.exercises(); exercises = r.exercises; categories = r.categories; }
@@ -19,6 +31,29 @@
   async function remove(e: Exercise) {
     exercises = exercises?.filter(x => x.id !== e.id) ?? null;
     try { await api.deleteExercise(e.id); } catch { load(); }
+  }
+
+  async function applyCrop(c: Crop) {
+    if (!cropping) return;
+    const target = cropping;
+    cropBusy = true;
+    try {
+      const updated = await api.cropExercise(target.id, c);
+      exercises = exercises?.map(x => x.id === updated.id ? updated : x) ?? null;
+      versions = { ...versions, [target.id]: Date.now() };   // force the cropped file to reload
+      bump();
+      f7.toast.show({ text: 'GIF cropped.', closeTimeout: 2000 });
+      cropping = null;
+    } catch (e) { f7.toast.show({ text: (e as Error).message, closeTimeout: 3000 }); }
+    finally { cropBusy = false; }
+  }
+  function cropFromEdit() {
+    pendingCrop = editing;
+    editing = null;
+  }
+  function editClosed() {
+    editing = null;
+    if (pendingCrop) { cropping = pendingCrop; pendingCrop = null; }   // open after the edit popup has fully closed
   }
   const saved = async () => { await load(); bump(); };
 </script>
@@ -35,15 +70,16 @@
           {#snippet media()}
             {#if e.gif}
               <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${e.name} GIF full screen`}
-                    onclick={(ev) => { ev.preventDefault(); ev.stopPropagation(); openGif(mediaUrl(e.gif)!, e.name); }}
-                    onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); openGif(mediaUrl(e.gif)!, e.name); } }}>
-                <img class="thumb" src={mediaUrl(e.gif)} alt="" draggable="false" />
+                    onclick={(ev) => { ev.preventDefault(); ev.stopPropagation(); openGif(gifSrc(e)!, e.name); }}
+                    onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); openGif(gifSrc(e)!, e.name); } }}>
+                <img class="thumb" src={thumbSrc(e)} alt="" draggable="false" loading="lazy" decoding="async" />
               </span>
             {:else}
               <span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>
             {/if}
           {/snippet}
           <SwipeoutActions right>
+            {#if e.gif}<SwipeoutButton close onClick={() => (cropping = e)}>Crop</SwipeoutButton>{/if}
             <SwipeoutButton delete>Delete</SwipeoutButton>
           </SwipeoutActions>
         </ListItem>
@@ -64,6 +100,20 @@
   </Actions>
 
   <ExerciseForm mode="create" bind:opened={uploading} {categories} onsaved={saved} />
-  <ExerciseForm mode="edit" opened={!!editing} exercise={editing} {categories} onsaved={saved} onclosed={() => (editing = null)} />
+  <ExerciseForm mode="edit" opened={!!editing} exercise={editing} {categories} onsaved={saved} onclosed={editClosed} oncrop={cropFromEdit} />
   <InstagramStudio bind:opened={instagram} {categories} onsaved={saved} />
+
+  <Popup opened={!!cropping} onPopupClosed={() => (cropping = null)}>
+    <View>
+      <Page>
+        <Navbar title="Crop GIF">
+          <NavLeft><Link popupClose>Cancel</Link></NavLeft>
+        </Navbar>
+        {#if cropping && cropping.gif}
+          <CropEditor src={gifSrc(cropping)!} kind="image" busy={cropBusy}
+                      onapply={applyCrop} oncancel={() => (cropping = null)} />
+        {/if}
+      </Page>
+    </View>
+  </Popup>
 </Page>

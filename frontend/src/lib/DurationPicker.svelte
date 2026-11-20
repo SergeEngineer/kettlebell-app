@@ -3,6 +3,7 @@
   import { f7 } from 'framework7-svelte';
 
   // iOS wheel picker (Framework7's inline Picker) for minutes and seconds.
+  // The unit labels sit above fixed-width, centred columns so the numbers always line up.
   let { seconds, onchange }: { seconds: number; onchange: (seconds: number) => void } = $props();
 
   let el: HTMLDivElement;
@@ -18,14 +19,27 @@
     picker = f7.picker.create({
       containerEl: el, toolbar: false, rotateEffect: true, value: [String(mm(start)), String(ss(start))],
       cols: [
-        { values: Array.from({ length: 100 }, (_, i) => String(i)), textAlign: 'right' },
-        { divider: true, content: 'min' },
-        { values: secs.map(String), displayValues: secs.map(pad), textAlign: 'left' },
-        { divider: true, content: 'sec' },
+        { values: Array.from({ length: 100 }, (_, i) => String(i)), cssClass: 'dur-col', textAlign: 'center' },
+        { values: secs.map(String), displayValues: secs.map(pad), cssClass: 'dur-col', textAlign: 'center' },
       ],
       on: { change: (_p: unknown, v: unknown) => { const [m, s] = (v as string[]).map(Number); onchange(m * 60 + s); } },
     });
-    return () => picker?.destroy();
+
+    // Framework7 measures the wheel when it is first mounted. Inside a closed popup that is
+    // 0×0, which leaves the scroll padding at 0 and puts the selected value off the highlight.
+    // Re-measure as soon as the picker actually has a size.
+    const recenter = () => {
+      if (!picker) return;
+      const s = seconds;
+      (picker as unknown as { resizeCols: () => void }).resizeCols();
+      picker.setValue([String(mm(s)), String(ss(s))]);
+    };
+    const ro = new ResizeObserver(entries => {
+      if (entries[0]?.contentRect.height) recenter();
+    });
+    ro.observe(el);
+
+    return () => { ro.disconnect(); picker?.destroy(); };
   });
 
   // Follow external changes (e.g. switching Workout → Rest resets the time).
@@ -36,4 +50,7 @@
   });
 </script>
 
-<div class="duration-picker" bind:this={el}></div>
+<div class="dur">
+  <div class="dur-labels" aria-hidden="true"><span>min</span><span>sec</span></div>
+  <div class="duration-picker" bind:this={el}></div>
+</div>

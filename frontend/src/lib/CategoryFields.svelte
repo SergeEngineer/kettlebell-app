@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Category } from '../types';
   // Category <select> with a "New category…" escape hatch, in Framework7 form-row markup.
-  let { categories, category = $bindable(''), newCategory = $bindable('') }:
-    { categories: Category[]; category: string; newCategory: string } = $props();
+  let { categories, category = $bindable(''), newCategory = $bindable(''), invalid = {} }:
+    { categories: Category[]; category: string; newCategory: string; invalid?: { category?: boolean; newCategory?: boolean } } = $props();
 </script>
 
-<li class="item-content item-input">
+<li class="item-content item-input" class:field-invalid={invalid.category}>
   <div class="item-inner">
     <div class="item-title item-label">Category</div>
     <div class="item-input-wrap input-dropdown-wrap">
@@ -18,10 +18,10 @@
   </div>
 </li>
 {#if category === 'new'}
-  <li class="item-content item-input">
+  <li class="item-content item-input" class:field-invalid={invalid.newCategory}>
     <div class="item-inner">
       <div class="item-input-wrap">
-        <input type="text" placeholder="New category name" autocapitalize="words" bind:value={newCategory} required>
+        <input type="text" placeholder="New category name" autocapitalize="words" bind:value={newCategory}>
       </div>
     </div>
   </li>

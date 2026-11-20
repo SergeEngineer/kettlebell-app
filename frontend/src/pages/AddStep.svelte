@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Popup, View, Page, Navbar, NavLeft, NavRight, Link, Segmented, Button, f7 } from 'framework7-svelte';
-  import { api, media } from '../lib/api';
+  import { api, thumb } from '../lib/api';
   import DurationPicker from '../lib/DurationPicker.svelte';
   import type { Category, Exercise, ProgramDetail } from '../types';
 
@@ -12,18 +12,18 @@
   let cat = $state<'all' | 'none' | number>('all');
   let sel = $state<number | 'new' | null>(null);
   let newName = $state(''), file = $state<File | null>(null);
-  let seconds = $state(300), busy = $state(false);
+  let seconds = $state(60), busy = $state(false);
 
   const visible = $derived(exercises.filter(e => cat === 'all' || (cat === 'none' ? e.category_id === null : e.category_id === cat)));
   const hasUncat = $derived(exercises.some(e => e.category_id === null));
 
   $effect(() => {
     if (!opened) return;
-    kind = 'ex'; sel = null; newName = ''; file = null; seconds = 300; cat = 'all';
+    kind = 'ex'; sel = null; newName = ''; file = null; seconds = 60; cat = 'all';
     api.exercises().then(r => { exercises = r.exercises; categories = r.categories; if (!r.exercises.length) sel = 'new'; })
       .catch(e => f7.toast.show({ text: e.message, closeTimeout: 2500 }));
   });
-  const setKind = (k: 'ex' | 'rest') => { kind = k; seconds = k === 'rest' ? 30 : 300; };
+  const setKind = (k: 'ex' | 'rest') => { kind = k; seconds = k === 'rest' ? 30 : 60; };
   const ready = $derived(seconds > 0 && (kind === 'rest' || (sel === 'new' ? !!newName.trim() : sel !== null)));
 
   async function submit() {
@@ -76,7 +76,7 @@
                   <input type="radio" name="exercise" checked={sel === e.id} onchange={() => (sel = e.id)}>
                   <i class="icon icon-radio"></i>
                   <div class="item-media">
-                    {#if e.gif}<img class="thumb" src={media(e.gif)} alt="" draggable="false">{:else}<span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>{/if}
+                    {#if e.gif}<img class="thumb" src={thumb(e.gif)} alt="" draggable="false" loading="lazy" decoding="async">{:else}<span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>{/if}
                   </div>
                   <div class="item-inner">
                     <div class="item-title">{e.name}<div class="item-footer">{e.category ?? 'Uncategorized'}</div></div>

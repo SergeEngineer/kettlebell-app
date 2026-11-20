@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { Page, Navbar, NavRight, Link, List, ListItem, Block, Button, SwipeoutActions, SwipeoutButton, f7 } from 'framework7-svelte';
-  import { api, fmt, media as mediaUrl } from '../lib/api';
+  import { api, fmt, media as mediaUrl, thumb as thumbUrl } from '../lib/api';
   import { ui, bump, openGif } from '../lib/state.svelte';
   import { grip } from '../lib/reorder';
   import DurationPicker from '../lib/DurationPicker.svelte';
@@ -73,7 +73,7 @@
               <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${s.name} GIF full screen`}
                     onclick={(e) => { e.stopPropagation(); openGif(mediaUrl(s.gif)!, s.name); }}
                     onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openGif(mediaUrl(s.gif)!, s.name); } }}>
-                <img class="thumb" src={mediaUrl(s.gif)} alt="" draggable="false" />
+                <img class="thumb" src={thumbUrl(s.gif)} alt="" draggable="false" loading="lazy" decoding="async" />
               </span>
             {:else}
               <span class="thumb letter">{s.kind === 'rest' ? 'Rest' : s.name.slice(0, 1).toUpperCase()}</span>

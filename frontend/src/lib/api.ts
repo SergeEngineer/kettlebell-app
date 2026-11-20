@@ -1,4 +1,4 @@
-import type { CalendarData, Category, Exercise, IgPreview, Program, ProgramDetail } from '../types';
+import type { CalendarData, Category, Crop, Exercise, IgPreview, Program, ProgramDetail } from '../types';
 
 async function req<T>(url: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(url, { credentials: 'same-origin', ...init });
@@ -19,6 +19,11 @@ export function duration(s: number) {
   return [m && `${m} ${m === 1 ? 'minute' : 'minutes'}`, r && `${r} ${r === 1 ? 'second' : 'seconds'}`].filter(Boolean).join(' ');
 }
 export const media = (gif: string | null) => (gif ? '/media/' + gif.split('/').map(encodeURIComponent).join('/') : null);
+/** Small static JPEG preview of a GIF, for list rows where animating every file would be slow. */
+export const thumb = (gif: string | null) => {
+  const url = media(gif);
+  return url ? url + '?thumb=1' : null;
+};
 
 export const api = {
   programs: () => req<Program[]>('/api/programs'),
@@ -38,9 +43,10 @@ export const api = {
   editExercise: (id: number, body: { name: string; category: string; new_category?: string }) =>
     req<Exercise>(`/api/exercises/${id}`, json('PATCH', body)),
   deleteExercise: (id: number) => req<{ ok: true }>(`/api/exercises/${id}`, json('DELETE')),
+  cropExercise: (id: number, crop: Crop) => req<Exercise>(`/api/exercises/${id}/crop`, json('POST', { crop })),
 
   igPreview: (url: string) => req<IgPreview>('/api/instagram/preview', json('POST', { url })),
-  igSave: (body: { token: string; start: number; end: number; name: string; category: string; new_category?: string }) =>
+  igSave: (body: { token: string; start: number; end: number; name: string; category: string; new_category?: string; crop?: Crop | null }) =>
     req<Exercise>('/api/instagram/save', json('POST', body)),
   igRelease: (token: string) => navigator.sendBeacon('/api/instagram/release', new Blob([JSON.stringify({ token })], { type: 'application/json' })),
 

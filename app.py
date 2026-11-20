@@ -1,14 +1,16 @@
-import glob, json, math, os, re, shutil, sqlite3, subprocess, time, uuid
+import glob, hashlib, json, math, os, re, shutil, sqlite3, subprocess, time, uuid
 from datetime import date
 from urllib.parse import urlsplit
-from flask import Flask, request, g, abort, send_from_directory, jsonify
+from flask import Flask, request, g, abort, send_file, send_from_directory, jsonify
 
 DATA = os.environ.get("DATA_DIR", "/data")
 UPLOADS = os.path.join(DATA, "uploads")
 VIDEO_CACHE = os.path.join(DATA, "video-cache")
+THUMBS = os.path.join(DATA, "thumbs")
 WEB_DIR = os.environ.get("WEB_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "web"))
 os.makedirs(UPLOADS, exist_ok=True)
 os.makedirs(VIDEO_CACHE, exist_ok=True)
+os.makedirs(THUMBS, exist_ok=True)
 ALLOWED = {".gif", ".webp", ".png", ".jpg", ".jpeg"}
 MAX_SECONDS = 99 * 60 + 59
 
@@ -84,6 +86,49 @@ def save_gif(f, name, category=None):
             f.save(os.path.join(folder, fn))
             return rel_upload_path(os.path.join(folder, fn))
     return None
+
+
+# ---------- list thumbnails ----------
+# A single small JPEG per media file. List views use it instead of the animated GIF so
+# scrolling and opening a long workout does not decode dozens of full-size animations.
+def thumb_path(rel):
+    return os.path.join(THUMBS, hashlib.sha1(rel.encode("utf-8")).hexdigest() + ".jpg")
+
+
+def drop_thumb(rel):
+    if not rel:
+        return
+    try:
+        os.remove(thumb_path(rel))
+    except OSError:
+        pass
+
+
+def ensure_thumb(rel, src):
+    """Return a cached thumbnail path for src, generating it on first use. None if unavailable."""
+    if not (rel and src and os.path.isfile(src) and shutil.which("ffmpeg")):
+        return None
+    dst = thumb_path(rel)
+    try:
+        if os.path.getmtime(dst) >= os.path.getmtime(src):
+            return dst
+    except OSError:
+        pass
+    tmp = f"{dst}.{uuid.uuid4().hex}.jpg"
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", src,
+            "-vf", "thumbnail=10,scale=160:-2:flags=lanczos",
+            "-frames:v", "1", "-q:v", "4", tmp,
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+        os.replace(tmp, dst)
+        return dst
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return None
 
 
 def instagram_url(value):
@@ -213,6 +258,25 @@ def category_name(cid):
     return row["name"] if row else None
 
 
+def normalized_crop(value):
+    """Validate a {x,y,w,h} crop (0..1 of the frame) and return an ffmpeg filter."""
+    if not value:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError
+    try:
+        x, y, w, h = (float(value[key]) for key in ("x", "y", "w", "h"))
+    except (KeyError, TypeError, ValueError):
+        raise ValueError
+    if not all(math.isfinite(v) for v in (x, y, w, h)):
+        raise ValueError
+    if x < 0 or y < 0 or w < 0.01 or h < 0.01 or x + w > 1.001 or y + h > 1.001:
+        raise ValueError
+    if x <= 0.001 and y <= 0.001 and w >= 0.999 and h >= 0.999:
+        return None   # the whole frame: nothing to crop
+    return f"crop=iw*{w:.6f}:ih*{h:.6f}:iw*{x:.6f}:ih*{y:.6f}"
+
+
 @app.post("/api/instagram/preview")
 def instagram_preview():
     clean_video_cache()
@@ -335,14 +399,21 @@ def save_instagram_gif():
         start, end = float(data.get("start", "nan")), float(data.get("end", "nan"))
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         return jsonify(error="Choose valid start and end points."), 400
-    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15:
+    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15.001:
         return jsonify(error="Choose a clip up to 15 seconds long within the video."), 400
+    try:
+        crop_filter = normalized_crop(data.get("crop"))
+    except ValueError:
+        return jsonify(error="Choose a valid crop area."), 400
     output = video_cache_path(token, f"-clip-{uuid.uuid4().hex}.gif")
+    video_chain = "fps=12,scale=480:-2:flags=lanczos"
+    if crop_filter:
+        video_chain = crop_filter + "," + video_chain
     try:
         subprocess.run([
             "ffmpeg", "-y", "-ss", f"{start:.4f}", "-i", source, "-t", f"{end-start:.4f}",
             "-filter_complex",
-            "[0:v]fps=12,scale=480:-2:flags=lanczos,split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
+            f"[0:v]{video_chain},split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
             "-an", "-loop", "0", output,
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -544,6 +615,7 @@ def api_edit_exercise(eid):
             target = os.path.join(folder, unique_name(sanitize(name), ext, folder=folder))
             if os.path.exists(old):   # keep the GIF name in step with the exercise name and category
                 os.replace(old, target)
+                drop_thumb(gif)
                 gif = rel_upload_path(target)
     db().execute("update exercises set name=?, gif=?, category_id=? where id=?", (name, gif, cid, eid))
     db().commit()
@@ -558,14 +630,63 @@ def api_del_exercise(eid):
             os.remove(os.path.join(UPLOADS, r["gif"]))
         except OSError:
             pass
+        drop_thumb(r["gif"])
     db().execute("delete from steps where exercise_id=?", (eid,))
     db().execute("delete from exercises where id=?", (eid,))
     db().commit()
     return jsonify(ok=True)
 
 
+@app.post("/api/exercises/<int:eid>/crop")
+def api_crop_exercise(eid):
+    """Crop an exercise GIF/media in place, keeping its name and category."""
+    row = db().execute("select gif from exercises where id=?", (eid,)).fetchone() or abort(404)
+    if not row["gif"]:
+        return jsonify(error="This exercise has no GIF to crop."), 400
+    try:
+        crop_filter = normalized_crop(body().get("crop"))
+    except ValueError:
+        return jsonify(error="Choose a valid crop area."), 400
+    if not crop_filter:
+        return jsonify(error="Drag the crop box to select a smaller area."), 400
+    if not shutil.which("ffmpeg"):
+        return jsonify(error="Cropping is unavailable because ffmpeg is not installed."), 503
+    src = os.path.join(UPLOADS, row["gif"])
+    uploads = os.path.realpath(UPLOADS)
+    if os.path.commonpath([os.path.realpath(src), uploads]) != uploads or not os.path.isfile(src):
+        return jsonify(error="The exercise file could not be found."), 404
+    root, ext = os.path.splitext(src)
+    if ext.lower() not in ALLOWED:
+        return jsonify(error="This file type cannot be cropped."), 400
+    tmp = f"{root}.crop-{uuid.uuid4().hex}{ext}"
+    try:
+        if ext.lower() == ".gif":
+            cmd = [
+                "ffmpeg", "-y", "-i", src, "-filter_complex",
+                f"[0:v]{crop_filter},split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
+                "-loop", "0", tmp,
+            ]
+        else:
+            cmd = ["ffmpeg", "-y", "-i", src, "-vf", crop_filter, tmp]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+        os.replace(tmp, src)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return jsonify(error="Cropping failed. Try a larger crop area."), 422
+    return jsonify(exercise_json(eid))
+
+
 @app.get("/media/<path:f>")
 def media(f):
+    if request.args.get("thumb"):
+        src = os.path.join(UPLOADS, f)
+        thumb = ensure_thumb(f, src)
+        if thumb:
+            # Revalidate every time (cheap 304) so a recropped GIF never shows a stale preview.
+            return send_file(thumb, mimetype="image/jpeg", conditional=True, max_age=0)
     return send_from_directory(UPLOADS, f, max_age=0)
 
 

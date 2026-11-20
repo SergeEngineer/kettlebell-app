@@ -3,7 +3,7 @@
   import { Page, Navbar, Block, List, ListItem, f7 } from 'framework7-svelte';
   import { api, duration } from '../lib/api';
   import { ui } from '../lib/state.svelte';
-  import type { CalendarData, Completion } from '../types';
+  import type { CalendarData } from '../types';
 
   const WEEKS = 53;
   const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -11,7 +11,6 @@
   const key = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   let data = $state<CalendarData>({ done: {}, recent: [] });
-  let picked = $state<string | null>(null);
   let scroller: HTMLDivElement | undefined = $state();
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -43,17 +42,15 @@
     while (data.done[key(cur)]) { n++; cur.setDate(cur.getDate() - 1); }
     return n;
   });
-  const todayKey = key(today);
-  const day = $derived.by(() => {
-    const k = picked ?? todayKey;
-    const items: Completion[] = data.done[k] ?? [];
-    const secs = items.reduce((n, i) => n + i.seconds, 0);
-    const label = new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-    const summary = items.length
-      ? `${items.length} ${items.length === 1 ? 'workout' : 'workouts'}${secs ? ' · ' + duration(secs) : ''}`
-      : k === todayKey ? 'Nothing completed yet today' : 'No workout completed';
-    return { label, summary, items };
-  });
+  const dayLabel = (k: string) => new Date(k + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  // Tapping a completed day shows how long was spent on it.
+  function pick(k: string, n: number) {
+    if (!n) return;
+    const secs = (data.done[k] ?? []).reduce((total, item) => total + item.seconds, 0);
+    const spent = secs ? duration(secs) : `${n} ${n === 1 ? 'workout' : 'workouts'}`;
+    f7.toast.show({ text: `${spent} on ${dayLabel(k)}`, closeTimeout: 2400 });
+  }
 
   async function load() {
     try { data = await api.calendar(); await tick(); if (scroller) scroller.scrollLeft = 1e6; }   // start at today (right edge)
@@ -72,20 +69,13 @@
       <div class="cells" role="grid" aria-label="Completed workouts, last 12 months">
         {#each cells as c (c.k)}
           {#if c.future}<div class="gap"></div>{:else}
-            <button class="cell" class:on={c.n > 0} class:on2={c.n > 1} class:today={c.today} class:picked={picked === c.k}
-                    aria-label={`${c.k}: ${c.n} ${c.n === 1 ? 'workout' : 'workouts'} completed`} onclick={() => (picked = c.k)}></button>
+            <button class="cell" class:on={c.n > 0} class:on2={c.n > 1} class:today={c.today}
+                    aria-label={`${c.k}: ${c.n} ${c.n === 1 ? 'workout' : 'workouts'} completed`} onclick={() => pick(c.k, c.n)}></button>
           {/if}
         {/each}
       </div>
     </div>
   </div>
-  <div class="daycard" aria-live="polite">
-    <div class="dayhead"><strong>{day.label}</strong><span>{day.summary}</span></div>
-    {#each day.items as it}
-      <div class="dayrow"><span>{it.name}</span>{#if it.seconds}<span class="dim">{duration(it.seconds)}</span>{/if}</div>
-    {/each}
-  </div>
-
   <div class="block-title">Recent</div>
   {#if data.recent.length}
     <List strong inset dividersIos>

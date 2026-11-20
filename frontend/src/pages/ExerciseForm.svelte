@@ -5,21 +5,40 @@
   import type { Category, Exercise } from '../types';
 
   // One popup for both uploading a new exercise and renaming / recategorising an existing one.
-  let { mode, opened = $bindable(false), categories, exercise = null, onsaved, onclosed }: {
+  let { mode, opened = $bindable(false), categories, exercise = null, onsaved, onclosed, oncrop }: {
     mode: 'create' | 'edit'; opened: boolean; categories: Category[]; exercise?: Exercise | null;
-    onsaved: () => void; onclosed?: () => void;
+    onsaved: () => void; onclosed?: () => void; oncrop?: () => void;
   } = $props();
 
   let name = $state(''), category = $state(''), newCategory = $state(''), file = $state<File | null>(null), busy = $state(false);
+  let attempted = $state(false);
 
   $effect(() => {
     if (!opened) return;
     name = exercise?.name ?? ''; category = exercise?.category_id ? String(exercise.category_id) : ''; newCategory = ''; file = null;
+    attempted = false;
   });
-  const ready = $derived(!!name.trim() && (category !== 'new' || !!newCategory.trim()));
+  const missing = $derived.by(() => {
+    const out: string[] = [];
+    if (!name.trim()) out.push('exercise name');
+    if (!category) out.push('category');
+    else if (category === 'new' && !newCategory.trim()) out.push('new category name');
+    return out;
+  });
+  const invalid = $derived({
+    name: attempted && !name.trim(),
+    category: attempted && !category,
+    newCategory: attempted && category === 'new' && !newCategory.trim(),
+  });
+  const ready = $derived(missing.length === 0);
 
   async function submit() {
-    if (!ready || busy) return;
+    if (busy) return;
+    if (!ready) {
+      attempted = true;
+      f7.toast.show({ text: `Missing: ${missing.join(', ')}.`, closeTimeout: 3000 });
+      return;
+    }
     busy = true;
     try {
       if (mode === 'edit' && exercise) {
@@ -41,14 +60,14 @@
     <Page>
       <Navbar title={mode === 'edit' ? 'Edit exercise' : 'New exercise'}>
         <NavLeft><Link popupClose>Cancel</Link></NavLeft>
-        <NavRight><Link onClick={submit} class={ready && !busy ? '' : 'disabled'}>Save</Link></NavRight>
+        <NavRight><Link onClick={submit} class={busy ? 'disabled' : ''}>Save</Link></NavRight>
       </Navbar>
       <div class="list inset-strong form-list">
         <ul>
-          <li class="item-content item-input"><div class="item-inner"><div class="item-input-wrap">
+          <li class="item-content item-input" class:field-invalid={invalid.name}><div class="item-inner"><div class="item-input-wrap">
             <input type="text" placeholder="Exercise name" autocapitalize="words" bind:value={name}>
           </div></div></li>
-          <CategoryFields {categories} bind:category bind:newCategory />
+          <CategoryFields {categories} bind:category bind:newCategory {invalid} />
           {#if mode === 'create'}
             <li class="item-content item-input"><div class="item-inner"><div class="item-input-wrap">
               <input type="file" accept="image/gif,image/webp,image/png,image/jpeg" onchange={(e) => (file = e.currentTarget.files?.[0] ?? null)}>
@@ -57,6 +76,9 @@
         </ul>
       </div>
       {#if mode === 'create'}<p class="empty-note">GIF, WebP, PNG or JPEG, up to 30 MB. Renaming the exercise later renames its file too.</p>{/if}
+      {#if mode === 'edit' && exercise?.gif}
+        <div class="block"><button type="button" class="button button-round" onclick={() => oncrop?.()}>Crop GIF</button></div>
+      {/if}
     </Page>
   </View>
 </Popup>

@@ -98,24 +98,27 @@
 
 <div class="player" bind:this={root} data-kind={cur?.kind ?? 'ready'}>
   <div class="stage" bind:this={stage}>
-    <div class="top">
-      <button class="circ" aria-label="Close player" onclick={close}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
-      </button>
-      <div><strong>{title}</strong><small>{i === 0 ? 'Get ready' : `Step ${i} of ${stepCount}`}</small></div>
-    </div>
-
-    <div class="ring">
-      <svg viewBox="0 0 240 240" aria-hidden="true">
-        <circle class="bg" cx="120" cy="120" r={R} />
-        <circle class="fg" cx="120" cy="120" r={R} stroke-dasharray={C} stroke-dashoffset={C * (1 - remain / total)} />
-      </svg>
-      <div class="ringtxt"><div class="time" aria-live="off">{fmt(Math.ceil(remain / 1000))}</div><div class="phase">{phase}</div></div>
-    </div>
-
-    <div class="name"><h2>{heading}</h2><small>{next ? `Next: ${next.name} · ${fmt(next.seconds)}` : cur?.kind === 'ready' ? '' : 'Last one'}</small></div>
+    <!-- Full-width GIF behind the HUD, vertically centred in the lower two thirds. -->
     <div class="media">{#if pic}<img src={pic} alt="" />{/if}</div>
-    <div class="spacer"></div>
+
+    <div class="clockzone">
+      <div class="top">
+        <button class="circ" aria-label="Close player" onclick={close}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+        </button>
+        <div><strong>{title}</strong><small>{i === 0 ? 'Get ready' : `Step ${i} of ${stepCount}`}</small></div>
+      </div>
+
+      <div class="ring">
+        <svg viewBox="0 0 240 240" aria-hidden="true">
+          <circle class="bg" cx="120" cy="120" r={R} />
+          <circle class="fg" cx="120" cy="120" r={R} stroke-dasharray={C} stroke-dashoffset={C * (1 - remain / total)} />
+        </svg>
+        <div class="ringtxt"><div class="time" aria-live="off">{fmt(Math.ceil(remain / 1000))}</div><div class="phase">{phase}</div></div>
+      </div>
+
+      <div class="name"><h2>{heading}</h2><small>{next ? `Next: ${next.name} · ${fmt(next.seconds)}` : cur?.kind === 'ready' ? '' : 'Last one'}</small></div>
+    </div>
 
     <div class="ctrl">
       <button aria-label="Previous step" onclick={prev}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg></button>

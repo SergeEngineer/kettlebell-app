@@ -4,9 +4,10 @@
   import Player from './pages/Player.svelte';
   import GifViewer from './lib/GifViewer.svelte';
   import { ui, bump } from './lib/state.svelte';
+  import { effectiveDark } from './lib/settings.svelte';
 
   const f7params = {
-    name: 'Kettlebell', theme: 'ios', darkMode: 'auto', routes,
+    name: 'Kettlebell', theme: 'ios', darkMode: effectiveDark(), routes,
     touch: { tapHold: false },
     view: { iosDynamicNavbar: true, animate: true },
   };
@@ -27,10 +28,15 @@
         <i class="icon tabico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></i>
         <span class="tabbar-label">Calendar</span>
       </Link>
+      <Link tabLink="#view-settings" onClick={bump}>
+        <i class="icon tabico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9.4a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.05a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg></i>
+        <span class="tabbar-label">Settings</span>
+      </Link>
     </Toolbar>
     <View id="view-workouts" main tab tabActive url="/" />
     <View id="view-exercises" tab url="/exercises/" />
     <View id="view-calendar" tab url="/calendar/" />
+    <View id="view-settings" tab url="/settings/" />
   </Views>
 
   {#if ui.player !== null}{#key ui.player}<Player id={ui.player} />{/key}{/if}
