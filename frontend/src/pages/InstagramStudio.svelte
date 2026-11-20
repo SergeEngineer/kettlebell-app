@@ -102,14 +102,15 @@
     try {
       await api.igSave({ token: clip.token, start, end, name: label, category, new_category: newCategory.trim(), crop });
       onsaved();
-      name = ''; if (category === 'new') { category = ''; newCategory = ''; }
-      status = `Saved “${label}”. Adjust the sliders to cut another clip from this video.`;
+      // Keep the name/category so a second clip only needs new frames + another click.
+      status = `Saved “${label}”. Pick new frames and click Create GIF again to save another clip from this video.`;
     } catch (err) { status = (err as Error).message; }
     finally { saving = false; }
   }
 </script>
 
-<Popup {opened} swipeToClose onPopupClosed={() => (opened = false)}>
+<Popup {opened} swipeToClose={false} closeByBackdropClick={false} closeOnEscape={false}
+       onPopupClosed={() => (opened = false)}>
   <View>
     <Page>
       <Navbar title="From Instagram">
