@@ -157,15 +157,6 @@ def clean_video_cache(keep=None):
             pass
 
 
-def purge_video_cache():
-    """Remove every cached video preview. Called whenever a page is opened."""
-    for path in glob.glob(os.path.join(VIDEO_CACHE, "*")):
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-
-
 def release_video_cache(token):
     """Remove the cached files for one preview token, if it is valid."""
     if not re.fullmatch(r"[0-9a-f]{32}", token or ""):
@@ -496,7 +487,6 @@ def seconds_from(value):
 # ---------- workouts ----------
 @app.get("/api/programs")
 def api_programs():
-    purge_video_cache()
     rows = db().execute("""select p.id, p.name, coalesce(sum(s.seconds),0) total, count(s.id) steps
         from programs p left join steps s on s.program_id=p.id group by p.id order by p.id""").fetchall()
     return jsonify([dict(r) for r in rows])
@@ -514,7 +504,6 @@ def api_add_program():
 
 @app.get("/api/programs/<int:pid>")
 def api_program(pid):
-    purge_video_cache()
     return jsonify(program_json(pid))
 
 
@@ -698,7 +687,6 @@ def media(f):
 # ---------- calendar & completion ----------
 @app.get("/api/calendar")
 def api_calendar():
-    purge_video_cache()
     rows = db().execute("select day, name, seconds from completions order by id").fetchall()
     done = {}
     for row in rows:

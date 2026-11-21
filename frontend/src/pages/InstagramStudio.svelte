@@ -68,7 +68,6 @@
   }
   $effect(() => { if (!opened) release(); });
   onDestroy(release);
-  $effect(() => { const h = () => release(); window.addEventListener('pagehide', h); return () => window.removeEventListener('pagehide', h); });
 
   async function load(e: Event) {
     e.preventDefault(); loading = true; statusError = false; status = 'Loading and preparing the video…'; release();
