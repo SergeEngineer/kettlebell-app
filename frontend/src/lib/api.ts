@@ -31,9 +31,10 @@ export const api = {
   program: (id: number) => req<ProgramDetail>(`/api/programs/${id}`),
   renameProgram: (id: number, name: string) => req<{ ok: true }>(`/api/programs/${id}`, json('PATCH', { name })),
   deleteProgram: (id: number) => req<{ ok: true }>(`/api/programs/${id}`, json('DELETE')),
-  addStep: (pid: number, exercise_id: number | null, seconds: number) =>
-    req<ProgramDetail>(`/api/programs/${pid}/steps`, json('POST', { exercise_id, seconds })),
-  setSeconds: (sid: number, seconds: number) => req<{ ok: true }>(`/api/steps/${sid}`, json('PATCH', { seconds })),
+  addStep: (pid: number, exercise_id: number | null, seconds: number, rest = 0) =>
+    req<ProgramDetail>(`/api/programs/${pid}/steps`, json('POST', { exercise_id, seconds, rest })),
+  setStep: (sid: number, patch: { seconds?: number; rest?: number }) =>
+    req<{ ok: true }>(`/api/steps/${sid}`, json('PATCH', patch)),
   deleteStep: (sid: number) => req<{ ok: true }>(`/api/steps/${sid}`, json('DELETE')),
   reorder: (pid: number, ids: number[]) => req<ProgramDetail>(`/api/programs/${pid}/order`, json('PUT', { ids })),
   complete: (pid: number, day: string) => req<{ ok: true }>(`/api/programs/${pid}/complete`, json('POST', { day })),

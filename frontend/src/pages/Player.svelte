@@ -21,7 +21,9 @@
   let awake: ReturnType<typeof createAwake>;
 
   const cur = $derived(seq[i]), next = $derived(seq[i + 1]);
-  const stepCount = $derived(seq.length - 1);
+  // Rest is a phase inside an exercise step, so the counter follows exercises, not phases.
+  const stepCount = $derived(seq.filter(s => s.kind === 'ex').length);
+  const stepNo = $derived(seq.slice(0, i + 1).filter(s => s.kind === 'ex').length);
   const pic = $derived(cur?.gif || (cur && cur.kind !== 'ex' && next?.gif) || null);
   const heading = $derived(cur?.kind === 'ready' && next ? next.name : cur?.name ?? title);
   const phase = $derived(cur?.kind === 'ex' ? 'Work' : cur?.kind === 'rest' ? 'Rest' : 'Get ready');
@@ -73,7 +75,14 @@
     animate(root, { y: [window.innerHeight, 0] }, { type: 'spring', stiffness: 300, damping: 34 });
     api.program(id).then(p => {
       title = p.name;
-      seq = [READY, ...p.steps.map(s => ({ name: s.name, seconds: s.seconds, gif: media(s.gif), kind: s.kind }))];
+      // Rest lives on the exercise it follows, so unfold it into its own phase for the timer.
+      const phases: Item[] = p.steps.flatMap(s => {
+        const gif = media(s.gif);
+        if (s.kind === 'rest') return [{ name: 'Rest', seconds: s.seconds, gif, kind: 'rest' as const }];
+        const work: Item = { name: s.name, seconds: s.seconds, gif, kind: 'ex' };
+        return s.rest > 0 ? [work, { name: 'Rest', seconds: s.rest, gif, kind: 'rest' as const }] : [work];
+      });
+      seq = [READY, ...phases];
       total = remain = READY.seconds * 1000;
     }).catch(e => { loadError = (e as Error).message; });
 
@@ -106,7 +115,7 @@
         <button class="circ" aria-label="Close player" onclick={close}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
         </button>
-        <div><strong>{title}</strong><small>{i === 0 ? 'Get ready' : `Step ${i} of ${stepCount}`}</small></div>
+        <div><strong>{title}</strong><small>{i === 0 ? 'Get ready' : `Step ${Math.max(1, stepNo)} of ${Math.max(stepCount, stepNo)}`}</small></div>
       </div>
 
       <div class="ring">

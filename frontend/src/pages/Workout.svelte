@@ -14,7 +14,7 @@
   let prog = $state<ProgramDetail | null>(null);
   let open = $state<number | null>(null);      // step whose time wheels are showing
   let adding = $state(false);
-  const total = $derived(prog?.steps.reduce((n, s) => n + s.seconds, 0) ?? 0);
+  const total = $derived(prog?.steps.reduce((n, s) => n + s.seconds + s.rest, 0) ?? 0);
   const canStart = $derived(!!prog?.steps.some(s => s.kind === 'ex'));
 
   const toast = (e: unknown) => f7.toast.show({ text: (e as Error).message, closeTimeout: 2500 });
@@ -29,11 +29,23 @@
   }
 
   const saveTimers = new Map<number, number>();
-  function setSeconds(s: Step, seconds: number) {
-    if (seconds <= 0 || seconds === s.seconds) return;
-    s.seconds = seconds;                        // update the row straight away, save once the wheels settle
+  const pending = new Map<number, { seconds?: number; rest?: number }>();
+  function setStep(s: Step, patch: { seconds?: number; rest?: number }) {
+    if (patch.seconds !== undefined) {
+      if (patch.seconds <= 0 || patch.seconds === s.seconds) return;
+      s.seconds = patch.seconds;                  // update the row straight away, save once the wheels settle
+    }
+    if (patch.rest !== undefined) {
+      if (patch.rest === s.rest) return;
+      s.rest = patch.rest;
+    }
+    const merged = { ...(pending.get(s.id) ?? {}), ...patch };
+    pending.set(s.id, merged);
     clearTimeout(saveTimers.get(s.id));
-    saveTimers.set(s.id, window.setTimeout(() => api.setSeconds(s.id, seconds).then(bump).catch(toast), 500));
+    saveTimers.set(s.id, window.setTimeout(() => {
+      pending.delete(s.id);
+      api.setStep(s.id, merged).then(bump).catch((e) => { toast(e); load(); });
+    }, 500));
   }
   async function remove(s: Step) {
     if (!prog) return;
@@ -80,7 +92,7 @@
             {/if}
           {/snippet}
           {#snippet after()}
-            <span class="tm">{fmt(s.seconds)}</span>
+            <span class="tm">{fmt(s.seconds)}{#if s.kind === 'ex' && s.rest > 0}<small class="rest">rest {fmt(s.rest)}</small>{/if}</span>
             <span class="grip" role="button" tabindex="0" aria-label={`Reorder ${s.name}. Use arrow keys to move.`}
                   data-grip={s.id} onclick={(e) => e.stopPropagation()} onkeydown={() => {}}
                   use:grip={{ onCommit: commitOrder, disabled: open !== null }}>
@@ -92,13 +104,20 @@
           </SwipeoutActions>
         </ListItem>
         {#if open === s.id}
-          <li class="steppick"><DurationPicker seconds={s.seconds} onchange={(v) => setSeconds(s, v)} /></li>
+          <li class="steppick">
+            <div class="step-pick-label">Exercise for</div>
+            <DurationPicker seconds={s.seconds} onchange={(v) => setStep(s, { seconds: v })} />
+            {#if s.kind === 'ex'}
+              <div class="step-pick-label">Rest after</div>
+              <DurationPicker seconds={s.rest} onchange={(v) => setStep(s, { rest: v })} />
+            {/if}
+          </li>
         {/if}
       {/each}
     </List>
     <p class="total">Total {fmt(total)}</p>
   {:else if prog}
-    <Block class="empty">No steps yet. Tap Add to put an exercise or a rest in this workout.</Block>
+    <Block class="empty">No steps yet. Tap Add to put an exercise in this workout.</Block>
   {/if}
 
   <AddStep bind:opened={adding} {pid} onadded={(d) => { prog = d; bump(); }} />

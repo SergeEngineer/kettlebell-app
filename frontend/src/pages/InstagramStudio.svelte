@@ -64,13 +64,17 @@
   function release() {
     if (clip) api.igRelease(clip.token);
     clip = null; video?.removeAttribute('src'); cropping = false; crop = null;
-    attempted = false; statusError = false;
   }
-  $effect(() => { if (!opened) release(); });
+  function reset() {
+    release();
+    url = ''; name = ''; category = ''; newCategory = '';
+    status = ''; statusError = false; attempted = false;
+  }
+  $effect(() => { if (!opened) reset(); });
   onDestroy(release);
 
   async function load(e: Event) {
-    e.preventDefault(); loading = true; statusError = false; status = 'Loading and preparing the video…'; release();
+    e.preventDefault(); loading = true; statusError = false; attempted = false; status = 'Loading and preparing the video…'; release();
     try {
       const p = await api.igPreview(url.trim());
       clip = p; start = 0; end = Math.min(5, p.duration, MAX); previewing = 'start';
@@ -108,7 +112,7 @@
   }
 </script>
 
-<Popup {opened} swipeToClose={false} closeByBackdropClick={false} closeOnEscape={false}
+<Popup class="ig-studio" {opened} swipeToClose={false} closeByBackdropClick={false} closeOnEscape={false}
        onPopupClosed={() => (opened = false)}>
   <View>
     <Page>
@@ -137,8 +141,11 @@
           <!-- svelte-ignore a11y_media_has_caption -->
           <video bind:this={video} src={clip.video_url} controls playsinline preload="metadata" class="igvideo"
                  onloadedmetadata={() => { if (video) video.currentTime = previewing === 'end' ? end : start; }}></video>
+          <div class="crop-row">
+            <button type="button" class="button button-round" onclick={() => (cropping = true)}>{crop ? 'Adjust crop' : 'Crop video'}</button>
+            {#if crop}<button type="button" class="button button-round" onclick={() => (crop = null)}>Reset crop</button>{/if}
+          </div>
         {/if}
-        <p class="help">Previewing the {previewing} frame</p>
         <div class="list inset-strong form-list"><ul>
           <li class="item-content"><div class="item-inner">
             <RangeSlider id="ig-start" label="Start" text={t(start)} value={start} min={0} max={clip.duration} {step}
@@ -150,11 +157,6 @@
           </div></li>
         </ul></div>
         <p class="help">Selected length: {(end - start).toFixed(2)} s (up to 15 s)</p>
-        <div class="crop-row">
-          <button type="button" class="button button-round" onclick={() => (cropping = true)}>{crop ? 'Adjust crop' : 'Crop video'}</button>
-          {#if crop}<button type="button" class="button button-round" onclick={() => (crop = null)}>Reset crop</button>{/if}
-        </div>
-        {#if crop}<p class="help">Crop keeps {Math.round(crop.w * 100)}% × {Math.round(crop.h * 100)}% of each frame.</p>{/if}
 
         <form onsubmit={save} novalidate onfocusin={lockPreview} onpointerdown={lockPreview}>
           <div class="list inset-strong form-list"><ul>

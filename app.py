@@ -44,6 +44,8 @@ with sqlite3.connect(os.path.join(DATA, "app.db")) as c:
     """)
     if "label" not in [row[1] for row in c.execute("pragma table_info(steps)")]:
         c.execute("alter table steps add column label text")
+    if "rest" not in [row[1] for row in c.execute("pragma table_info(steps)")]:
+        c.execute("alter table steps add column rest integer not null default 0")
     if "category_id" not in [row[1] for row in c.execute("pragma table_info(exercises)")]:
         c.execute("alter table exercises add column category_id integer")
     if "seconds" not in [row[1] for row in c.execute("pragma table_info(completions)")]:
@@ -457,10 +459,10 @@ def exercise_json(eid):
 
 
 def steps_json(pid):
-    rows = db().execute("""select s.id, s.seconds, s.exercise_id, e.name, e.gif
+    rows = db().execute("""select s.id, s.seconds, s.rest, s.exercise_id, e.name, e.gif
         from steps s left join exercises e on e.id=s.exercise_id
         where s.program_id=? order by s.pos, s.id""", (pid,)).fetchall()
-    return [{"id": r["id"], "seconds": r["seconds"], "exercise_id": r["exercise_id"],
+    return [{"id": r["id"], "seconds": r["seconds"], "rest": r["rest"] or 0, "exercise_id": r["exercise_id"],
              "name": r["name"] or "Rest", "gif": r["gif"],
              "kind": "ex" if r["exercise_id"] else "rest"} for r in rows]
 
@@ -484,10 +486,23 @@ def seconds_from(value):
     return secs
 
 
+def rest_from(value):
+    """Rest after an exercise; 0 means no rest."""
+    if value is None:
+        return 0
+    try:
+        secs = int(value)
+    except (TypeError, ValueError):
+        abort(400)
+    if not 0 <= secs <= MAX_SECONDS:
+        abort(400)
+    return secs
+
+
 # ---------- workouts ----------
 @app.get("/api/programs")
 def api_programs():
-    rows = db().execute("""select p.id, p.name, coalesce(sum(s.seconds),0) total, count(s.id) steps
+    rows = db().execute("""select p.id, p.name, coalesce(sum(s.seconds + s.rest),0) total, count(s.id) steps
         from programs p left join steps s on s.program_id=p.id group by p.id order by p.id""").fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -529,12 +544,14 @@ def api_del_program(pid):
 def api_add_step(pid):
     data = body()
     secs = seconds_from(data.get("seconds"))
+    rest = rest_from(data.get("rest"))
     ex_id = data.get("exercise_id")
     if ex_id is not None:
         if not db().execute("select 1 from exercises where id=?", (ex_id,)).fetchone():
             return jsonify(error="That exercise no longer exists."), 400
     pos = db().execute("select coalesce(max(pos),-1)+1 from steps where program_id=?", (pid,)).fetchone()[0]
-    db().execute("insert into steps(program_id,pos,exercise_id,seconds) values(?,?,?,?)", (pid, pos, ex_id, secs))
+    db().execute("insert into steps(program_id,pos,exercise_id,seconds,rest) values(?,?,?,?,?)",
+                 (pid, pos, ex_id, secs, rest))
     db().commit()
     return jsonify(program_json(pid))
 
@@ -557,7 +574,18 @@ def api_reorder(pid):
 
 @app.patch("/api/steps/<int:sid>")
 def api_edit_step(sid):
-    db().execute("update steps set seconds=? where id=?", (seconds_from(body().get("seconds")), sid))
+    data = body()
+    updates, values = [], []
+    if "seconds" in data:
+        updates.append("seconds=?")
+        values.append(seconds_from(data.get("seconds")))
+    if "rest" in data:
+        updates.append("rest=?")
+        values.append(rest_from(data.get("rest")))
+    if not updates:
+        abort(400)
+    values.append(sid)
+    db().execute(f"update steps set {', '.join(updates)} where id=?", values)
     db().commit()
     return jsonify(ok=True)
 
@@ -703,7 +731,7 @@ def api_complete(pid):
         day = date.fromisoformat(str(body().get("day") or "")).isoformat()
     except ValueError:
         abort(400)
-    seconds = db().execute("select coalesce(sum(seconds),0) from steps where program_id=?", (pid,)).fetchone()[0]
+    seconds = db().execute("select coalesce(sum(seconds + rest),0) from steps where program_id=?", (pid,)).fetchone()[0]
     db().execute("insert into completions(program_id,name,day,ts,seconds) values(?,?,?,datetime('now'),?)",
                  (pid, p["name"], day, seconds))
     db().commit()

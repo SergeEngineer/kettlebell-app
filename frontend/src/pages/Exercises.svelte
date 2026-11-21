@@ -12,6 +12,11 @@
   let menu = $state(false), uploading = $state(false), instagram = $state(false), editing = $state<Exercise | null>(null);
   let cropping = $state<Exercise | null>(null), cropBusy = $state(false), pendingCrop = $state<Exercise | null>(null);
   let versions = $state<Record<number, number>>({});
+  let cat = $state<'all' | 'none' | number>('all');
+
+  const visible = $derived((exercises ?? []).filter(e =>
+    cat === 'all' || (cat === 'none' ? e.category_id === null : e.category_id === cat)));
+  const hasUncat = $derived((exercises ?? []).some(e => e.category_id === null));
 
   const gifSrc = (e: Exercise) => {
     const url = mediaUrl(e.gif);
@@ -23,7 +28,11 @@
   };
 
   async function load() {
-    try { const r = await api.exercises(); exercises = r.exercises; categories = r.categories; }
+    try {
+      const r = await api.exercises();
+      exercises = r.exercises; categories = r.categories;
+      if (cat !== 'all' && cat !== 'none' && !categories.some(c => c.id === cat)) cat = 'all';
+    }
     catch (e) { f7.toast.show({ text: (e as Error).message, closeTimeout: 2500 }); }
   }
   $effect(() => { void ui.rev; untrack(load); });
@@ -64,27 +73,38 @@
   </Navbar>
 
   {#if exercises && exercises.length}
-    <List strong inset dividersIos>
-      {#each exercises as e (e.id)}
-        <ListItem swipeout title={e.name} footer={e.category ?? ''} link="#" onClick={() => (editing = e)} onSwipeoutDeleted={() => remove(e)}>
-          {#snippet media()}
-            {#if e.gif}
-              <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${e.name} GIF full screen`}
-                    onclick={(ev) => { ev.preventDefault(); ev.stopPropagation(); openGif(gifSrc(e)!, e.name); }}
-                    onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); openGif(gifSrc(e)!, e.name); } }}>
-                <img class="thumb" src={thumbSrc(e)} alt="" draggable="false" loading="lazy" decoding="async" />
-              </span>
-            {:else}
-              <span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>
-            {/if}
-          {/snippet}
-          <SwipeoutActions right>
-            {#if e.gif}<SwipeoutButton close onClick={() => (cropping = e)}>Crop</SwipeoutButton>{/if}
-            <SwipeoutButton delete>Delete</SwipeoutButton>
-          </SwipeoutActions>
-        </ListItem>
-      {/each}
-    </List>
+    {#if categories.length || hasUncat}
+      <div class="chips" role="group" aria-label="Filter by category">
+        <button class="chip" class:on={cat === 'all'} onclick={() => (cat = 'all')}>All</button>
+        {#each categories as c (c.id)}<button class="chip" class:on={cat === c.id} onclick={() => (cat = c.id)}>{c.name}</button>{/each}
+        {#if hasUncat}<button class="chip" class:on={cat === 'none'} onclick={() => (cat = 'none')}>Uncategorized</button>{/if}
+      </div>
+    {/if}
+    {#if visible.length}
+      <List strong inset dividersIos>
+        {#each visible as e (e.id)}
+          <ListItem swipeout title={e.name} footer={e.category ?? ''} link="#" onClick={() => (editing = e)} onSwipeoutDeleted={() => remove(e)}>
+            {#snippet media()}
+              {#if e.gif}
+                <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${e.name} GIF full screen`}
+                      onclick={(ev) => { ev.preventDefault(); ev.stopPropagation(); openGif(gifSrc(e)!, e.name); }}
+                      onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); openGif(gifSrc(e)!, e.name); } }}>
+                  <img class="thumb" src={thumbSrc(e)} alt="" draggable="false" loading="lazy" decoding="async" />
+                </span>
+              {:else}
+                <span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>
+              {/if}
+            {/snippet}
+            <SwipeoutActions right>
+              {#if e.gif}<SwipeoutButton close onClick={() => (cropping = e)}>Crop</SwipeoutButton>{/if}
+              <SwipeoutButton delete>Delete</SwipeoutButton>
+            </SwipeoutActions>
+          </ListItem>
+        {/each}
+      </List>
+    {:else}
+      <Block class="empty">No exercises in this category.</Block>
+    {/if}
   {:else if exercises}
     <Block class="empty">No exercises yet. Tap Add to upload a GIF or make one from an Instagram video.</Block>
   {/if}
