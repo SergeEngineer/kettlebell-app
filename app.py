@@ -1,4 +1,5 @@
 import glob, hashlib, json, math, os, re, shutil, sqlite3, subprocess, time, uuid
+from io import BytesIO
 from datetime import date
 from urllib.parse import urlsplit
 from flask import Flask, request, g, abort, send_file, send_from_directory, jsonify
@@ -806,6 +807,12 @@ def api_crop_exercise(eid):
     return jsonify(exercise_json(eid))
 
 
+# Small JPEGs of individual GIF frames, used by the trim editor while scrubbing.
+# Keyed by file + mtime + frame index, so a re-trim/crop automatically invalidates them.
+_FRAME_CACHE = {}
+_FRAME_CACHE_MAX = 256
+
+
 def gif_media(eid):
     """Return (relative, absolute) paths for an exercise GIF, or (None, None)."""
     row = db().execute("select gif from exercises where id=?", (eid,)).fetchone() or abort(404)
@@ -817,6 +824,50 @@ def gif_media(eid):
     if os.path.commonpath([os.path.realpath(src), uploads]) != uploads or not os.path.isfile(src):
         return None, None
     return rel, src
+
+
+@app.get("/api/exercises/<int:eid>/gif-frame")
+def api_gif_frame(eid):
+    """Return the exact GIF frame at time t as a JPEG, for trim-editor scrubbing."""
+    _, src = gif_media(eid)
+    if not src:
+        return jsonify(error="This exercise has no GIF to trim."), 400
+    try:
+        at = float(request.args.get("t", 0))
+    except (TypeError, ValueError):
+        return jsonify(error="Choose a valid frame time."), 400
+    duration, fps = probe_video(src)
+    if duration <= 0:
+        return jsonify(error="Could not read this GIF's timing."), 422
+    if not math.isfinite(at) or at < 0:
+        return jsonify(error="Choose a valid frame time."), 400
+    frame_no = int(at * fps + 0.5) if fps > 0 else 0
+    last = max(0, int(duration * fps + 0.5) - 1) if fps > 0 else 0
+    frame_no = min(frame_no, last)
+    at = frame_no / fps if fps > 0 else min(at, duration)
+
+    try:
+        key = (src, os.stat(src).st_mtime_ns, frame_no)
+    except OSError:
+        return jsonify(error="This GIF is no longer available."), 404
+    data = _FRAME_CACHE.get(key)
+    if not data:
+        if not shutil.which("ffmpeg"):
+            return jsonify(error="Frame preview is unavailable because ffmpeg is not installed."), 503
+        try:
+            result = subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-i", src, "-ss", f"{at:.4f}",
+                "-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "-",
+            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return jsonify(error="Could not preview this frame."), 422
+        data = result.stdout
+        if not data:
+            return jsonify(error="Could not preview this frame."), 422
+        if len(_FRAME_CACHE) >= _FRAME_CACHE_MAX:
+            _FRAME_CACHE.pop(next(iter(_FRAME_CACHE)))
+        _FRAME_CACHE[key] = data
+    return send_file(BytesIO(data), mimetype="image/jpeg", max_age=0)
 
 
 @app.get("/api/exercises/<int:eid>/gif-info")

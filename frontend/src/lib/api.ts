@@ -46,6 +46,14 @@ export const api = {
   deleteExercise: (id: number) => req<{ ok: true }>(`/api/exercises/${id}`, json('DELETE')),
   cropExercise: (id: number, crop: Crop) => req<Exercise>(`/api/exercises/${id}/crop`, json('POST', { crop })),
   gifInfo: (id: number) => req<GifInfo>(`/api/exercises/${id}/gif-info`),
+  gifFrame: async (id: number, at: number) => {
+    const r = await fetch(`/api/exercises/${id}/gif-frame?t=${at.toFixed(4)}`, { credentials: 'same-origin' });
+    if (!r.ok) {
+      const data: any = await r.json().catch(() => null);
+      throw new Error(data?.error || `Frame preview failed (${r.status})`);
+    }
+    return URL.createObjectURL(await r.blob());
+  },
   trimExercise: (id: number, start: number, end: number) =>
     req<Exercise>(`/api/exercises/${id}/trim`, json('POST', { start, end })),
 

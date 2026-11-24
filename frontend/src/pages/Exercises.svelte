@@ -177,7 +177,7 @@
           <NavLeft><Link popupClose>Cancel</Link></NavLeft>
         </Navbar>
         {#if trimming}
-          <TrimEditor src={gifSrc(trimming.exercise)!} info={trimming.info} busy={trimBusy}
+          <TrimEditor id={trimming.exercise.id} src={gifSrc(trimming.exercise)!} info={trimming.info} busy={trimBusy}
                       onapply={applyTrim} oncancel={() => (trimming = null)} />
         {/if}
       </Page>
