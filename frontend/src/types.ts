@@ -8,3 +8,4 @@ export interface Completion { name: string; seconds: number }
 export interface CalendarData { done: Record<string, Completion[]>; recent: Recent[] }
 export interface IgPreview { token: string; duration: number; fps: number; video_url: string }
 export interface Crop { x: number; y: number; w: number; h: number }
+export interface GifInfo { duration: number; fps: number }

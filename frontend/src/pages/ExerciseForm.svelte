@@ -5,9 +5,9 @@
   import type { Category, Exercise } from '../types';
 
   // One popup for both uploading a new exercise and renaming / recategorising an existing one.
-  let { mode, opened = $bindable(false), categories, exercise = null, onsaved, onclosed, oncrop }: {
+  let { mode, opened = $bindable(false), categories, exercise = null, onsaved, onclosed, oncrop, ontrim }: {
     mode: 'create' | 'edit'; opened: boolean; categories: Category[]; exercise?: Exercise | null;
-    onsaved: () => void; onclosed?: () => void; oncrop?: () => void;
+    onsaved: () => void; onclosed?: () => void; oncrop?: () => void; ontrim?: () => void;
   } = $props();
 
   let name = $state(''), category = $state(''), newCategory = $state(''), file = $state<File | null>(null), busy = $state(false);
@@ -77,7 +77,13 @@
       </div>
       {#if mode === 'create'}<p class="empty-note">GIF, WebP, PNG or JPEG, up to 30 MB. Renaming the exercise later renames its file too.</p>{/if}
       {#if mode === 'edit' && exercise?.gif}
-        <div class="block"><button type="button" class="button button-round" onclick={() => oncrop?.()}>Crop GIF</button></div>
+        <div class="block block-strong inset-strong">
+          <p class="help">You can also edit the GIF itself without changing the exercise name or category.</p>
+          <div class="crop-row">
+            <button type="button" class="button button-round" onclick={() => oncrop?.()}>Crop GIF</button>
+            <button type="button" class="button button-round" onclick={() => ontrim?.()}>Trim GIF</button>
+          </div>
+        </div>
       {/if}
     </Page>
   </View>

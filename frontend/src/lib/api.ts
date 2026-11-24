@@ -1,4 +1,4 @@
-import type { CalendarData, Category, Crop, Exercise, IgPreview, Program, ProgramDetail } from '../types';
+import type { CalendarData, Category, Crop, Exercise, GifInfo, IgPreview, Program, ProgramDetail } from '../types';
 
 async function req<T>(url: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(url, { credentials: 'same-origin', ...init });
@@ -45,6 +45,9 @@ export const api = {
     req<Exercise>(`/api/exercises/${id}`, json('PATCH', body)),
   deleteExercise: (id: number) => req<{ ok: true }>(`/api/exercises/${id}`, json('DELETE')),
   cropExercise: (id: number, crop: Crop) => req<Exercise>(`/api/exercises/${id}/crop`, json('POST', { crop })),
+  gifInfo: (id: number) => req<GifInfo>(`/api/exercises/${id}/gif-info`),
+  trimExercise: (id: number, start: number, end: number) =>
+    req<Exercise>(`/api/exercises/${id}/trim`, json('POST', { start, end })),
 
   igPreview: (url: string) => req<IgPreview>('/api/instagram/preview', json('POST', { url })),
   igSave: (body: { token: string; start: number; end: number; name: string; category: string; new_category?: string; crop?: Crop | null }) =>

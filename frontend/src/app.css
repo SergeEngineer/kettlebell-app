@@ -91,6 +91,10 @@ li.lifting { position: relative; z-index: 5; background: var(--f7-list-bg-color,
 .crop-hint { padding: 0 16px; }
 .crop-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 4px 16px 16px; }
 .crop-actions .button { flex: 1 1 30%; min-width: 90px; max-width: 220px; margin: 0; }
+.trim-stage { display: flex; justify-content: center; padding: 8px 16px 0; }
+.trim-media { display: block; max-width: 100%; max-height: 50vh; width: auto; height: auto; border-radius: 12px; background: #000; }
+.trim-timeline { position: relative; height: 6px; margin: 14px 34px 2px; border-radius: 4px; background: rgba(142, 142, 147, .35); overflow: hidden; }
+.trim-kept { position: absolute; top: 0; bottom: 0; background: var(--f7-theme-color); }
 
 /* ---- calendar ---- */
 .stats { font-variant-numeric: tabular-nums; }

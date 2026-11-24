@@ -806,6 +806,70 @@ def api_crop_exercise(eid):
     return jsonify(exercise_json(eid))
 
 
+def gif_media(eid):
+    """Return (relative, absolute) paths for an exercise GIF, or (None, None)."""
+    row = db().execute("select gif from exercises where id=?", (eid,)).fetchone() or abort(404)
+    rel = row["gif"]
+    if not rel or not rel.lower().endswith(".gif"):
+        return None, None
+    src = os.path.join(UPLOADS, rel)
+    uploads = os.path.realpath(UPLOADS)
+    if os.path.commonpath([os.path.realpath(src), uploads]) != uploads or not os.path.isfile(src):
+        return None, None
+    return rel, src
+
+
+@app.get("/api/exercises/<int:eid>/gif-info")
+def api_gif_info(eid):
+    """Timing needed by the trim editor (GIFs are images, so the browser cannot seek)."""
+    _, src = gif_media(eid)
+    if not src:
+        return jsonify(error="This exercise has no GIF to trim."), 400
+    duration, fps = probe_video(src)
+    if duration <= 0:
+        return jsonify(error="Could not read this GIF's timing."), 422
+    return jsonify(duration=round(duration, 3), fps=round(fps, 3))
+
+
+@app.post("/api/exercises/<int:eid>/trim")
+def api_trim_exercise(eid):
+    """Shorten a GIF by dropping frames from its start and/or end, in place."""
+    _, src = gif_media(eid)
+    if not src:
+        return jsonify(error="This exercise has no GIF to trim."), 400
+    data = body()
+    try:
+        start, end = float(data.get("start")), float(data.get("end"))
+    except (TypeError, ValueError):
+        return jsonify(error="Choose a valid start and end."), 400
+    duration, _ = probe_video(src)
+    if not (math.isfinite(start) and math.isfinite(end)) or start < 0:
+        return jsonify(error="Choose a valid start and end."), 400
+    if end - start < MIN_GIF_SECONDS:
+        return jsonify(error="Keep at least 0.25 seconds of the GIF."), 400
+    if duration and end > duration + 0.05:
+        return jsonify(error="The end is past the end of the GIF."), 400
+    if not shutil.which("ffmpeg"):
+        return jsonify(error="Trimming is unavailable because ffmpeg is not installed."), 503
+    root, _ = os.path.splitext(src)
+    tmp = f"{root}.trim-{uuid.uuid4().hex}.gif"
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-ss", f"{start:.4f}", "-i", src, "-t", f"{end - start:.4f}",
+            "-filter_complex",
+            "[0:v]split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
+            "-loop", "0", tmp,
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+        os.replace(tmp, src)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return jsonify(error="Trimming failed. Try a longer section of the GIF."), 422
+    return jsonify(exercise_json(eid))
+
+
 @app.get("/media/<path:f>")
 def media(f):
     if request.args.get("thumb"):

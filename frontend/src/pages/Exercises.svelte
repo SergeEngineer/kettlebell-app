@@ -4,13 +4,16 @@
   import { api, media as mediaUrl, thumb } from '../lib/api';
   import { ui, bump, openGif } from '../lib/state.svelte';
   import CropEditor from '../lib/CropEditor.svelte';
+  import TrimEditor from '../lib/TrimEditor.svelte';
   import ExerciseForm from './ExerciseForm.svelte';
   import InstagramStudio from './InstagramStudio.svelte';
-  import type { Category, Crop, Exercise } from '../types';
+  import type { Category, Crop, Exercise, GifInfo } from '../types';
 
   let exercises = $state<Exercise[] | null>(null), categories = $state<Category[]>([]);
   let menu = $state(false), uploading = $state(false), instagram = $state(false), editing = $state<Exercise | null>(null);
   let cropping = $state<Exercise | null>(null), cropBusy = $state(false), pendingCrop = $state<Exercise | null>(null);
+  let trimming = $state<{ exercise: Exercise; info: GifInfo } | null>(null), trimBusy = $state(false);
+  let pendingTrim = $state<Exercise | null>(null);
   let versions = $state<Record<number, number>>({});
   let cat = $state<'all' | 'none' | number>('all');
 
@@ -57,12 +60,35 @@
     finally { cropBusy = false; }
   }
   function cropFromEdit() {
-    pendingCrop = editing;
+    pendingCrop = editing; pendingTrim = null;
+    editing = null;
+  }
+  async function openTrim(e: Exercise) {
+    try { trimming = { exercise: e, info: await api.gifInfo(e.id) }; }
+    catch (err) { f7.toast.show({ text: (err as Error).message, closeTimeout: 3000 }); }
+  }
+  async function applyTrim(start: number, end: number) {
+    if (!trimming) return;
+    const target = trimming.exercise;
+    trimBusy = true;
+    try {
+      const updated = await api.trimExercise(target.id, start, end);
+      exercises = exercises?.map(x => x.id === updated.id ? updated : x) ?? null;
+      versions = { ...versions, [target.id]: Date.now() };   // reload the shortened GIF
+      bump();
+      f7.toast.show({ text: 'GIF trimmed.', closeTimeout: 2000 });
+      trimming = null;
+    } catch (e) { f7.toast.show({ text: (e as Error).message, closeTimeout: 3000 }); }
+    finally { trimBusy = false; }
+  }
+  function trimFromEdit() {
+    pendingTrim = editing; pendingCrop = null;
     editing = null;
   }
   function editClosed() {
     editing = null;
-    if (pendingCrop) { cropping = pendingCrop; pendingCrop = null; }   // open after the edit popup has fully closed
+    if (pendingCrop) { cropping = pendingCrop; pendingCrop = null; pendingTrim = null; }   // open after the edit popup has fully closed
+    else if (pendingTrim) { const e = pendingTrim; pendingTrim = null; void openTrim(e); }
   }
   const saved = async () => { await load(); bump(); };
 </script>
@@ -83,7 +109,13 @@
     {#if visible.length}
       <List strong inset dividersIos>
         {#each visible as e (e.id)}
-          <ListItem swipeout title={e.name} footer={e.category ?? ''} link="#" onClick={() => (editing = e)} onSwipeoutDeleted={() => remove(e)}>
+          <ListItem swipeout title={e.name} footer={e.category ?? ''} link="#"
+                    onClick={(ev) => {
+                      // Swipeout actions bubble to the row; ignore them so Crop/Trim don't also open the edit popup.
+                      if ((ev.target as HTMLElement | null)?.closest('.swipeout-actions-right')) return;
+                      editing = e;
+                    }}
+                    onSwipeoutDeleted={() => remove(e)}>
             {#snippet media()}
               {#if e.gif}
                 <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${e.name} GIF full screen`}
@@ -96,7 +128,8 @@
               {/if}
             {/snippet}
             <SwipeoutActions right>
-              {#if e.gif}<SwipeoutButton close onClick={() => (cropping = e)}>Crop</SwipeoutButton>{/if}
+              {#if e.gif}<SwipeoutButton close onclick={() => (cropping = e)}>Crop</SwipeoutButton>
+                <SwipeoutButton close onclick={() => openTrim(e)}>Trim</SwipeoutButton>{/if}
               <SwipeoutButton delete>Delete</SwipeoutButton>
             </SwipeoutActions>
           </ListItem>
@@ -120,7 +153,7 @@
   </Actions>
 
   <ExerciseForm mode="create" bind:opened={uploading} {categories} onsaved={saved} />
-  <ExerciseForm mode="edit" opened={!!editing} exercise={editing} {categories} onsaved={saved} onclosed={editClosed} oncrop={cropFromEdit} />
+  <ExerciseForm mode="edit" opened={!!editing} exercise={editing} {categories} onsaved={saved} onclosed={editClosed} oncrop={cropFromEdit} ontrim={trimFromEdit} />
   <InstagramStudio bind:opened={instagram} {categories} onsaved={saved} />
 
   <Popup opened={!!cropping} onPopupClosed={() => (cropping = null)}>
@@ -132,6 +165,20 @@
         {#if cropping && cropping.gif}
           <CropEditor src={gifSrc(cropping)!} kind="image" busy={cropBusy}
                       onapply={applyCrop} oncancel={() => (cropping = null)} />
+        {/if}
+      </Page>
+    </View>
+  </Popup>
+
+  <Popup opened={!!trimming} onPopupClosed={() => (trimming = null)}>
+    <View>
+      <Page>
+        <Navbar title="Trim GIF">
+          <NavLeft><Link popupClose>Cancel</Link></NavLeft>
+        </Navbar>
+        {#if trimming}
+          <TrimEditor src={gifSrc(trimming.exercise)!} info={trimming.info} busy={trimBusy}
+                      onapply={applyTrim} oncancel={() => (trimming = null)} />
         {/if}
       </Page>
     </View>
