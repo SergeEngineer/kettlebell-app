@@ -14,7 +14,11 @@
   let prog = $state<ProgramDetail | null>(null);
   let open = $state<number | null>(null);      // step whose time wheels are showing
   let adding = $state(false);
-  const total = $derived(prog?.steps.reduce((n, s) => n + s.seconds + s.rest, 0) ?? 0);
+  const total = $derived.by(() => {
+    const steps = prog?.steps ?? [];
+    const lastExercise = steps.map(s => s.kind === 'ex').lastIndexOf(true);
+    return steps.reduce((n, s, i) => n + s.seconds + (i === lastExercise ? 0 : s.rest), 0);
+  });
   const canStart = $derived(!!prog?.steps.some(s => s.kind === 'ex'));
 
   const toast = (e: unknown) => f7.toast.show({ text: (e as Error).message, closeTimeout: 2500 });

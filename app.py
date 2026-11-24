@@ -284,23 +284,43 @@ def instagram_preview():
         token = uuid.uuid4().hex
         outtmpl = os.path.join(VIDEO_CACHE, token + "-source.%(ext)s")
         options = {
-            "format": "best[ext=mp4]/best", "noplaylist": True,
-            "quiet": True, "no_warnings": True, "socket_timeout": 20,
-            "retries": 2, "max_filesize": 100 * 1024 * 1024,
-            "outtmpl": outtmpl,
+            "noplaylist": True, "quiet": True, "no_warnings": True,
+            "socket_timeout": 30, "retries": 3, "fragment_retries": 3,
+            "max_filesize": 300 * 1024 * 1024, "outtmpl": outtmpl,
         }
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=False)
-            media_info = info
-            if info and (info.get("_type") == "playlist" or "entries" in info):
-                entries = [e for e in (info.get("entries") or []) if e]
-                if entries:
-                    media_info = entries[0]
-            known_duration = float(media_info.get("duration") or 0) if media_info else 0.0
-            if known_duration > 180:
-                return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
-            with yt_dlp.YoutubeDL(options) as downloader:
-                downloader.download([url])
+        # Long clips often only have a large high-resolution format available.
+        # Try progressively smaller ones instead of failing the whole preview.
+        formats = (
+            "best[ext=mp4][height<=1080]/best[ext=mp4]/best[height<=1080]/best",
+            "best[ext=mp4][height<=720]/best[height<=720]/worst[ext=mp4]/worst",
+        )
+        last_error = None
+        for fmt in formats:
+            attempt = {**options, "format": fmt}
+            try:
+                with yt_dlp.YoutubeDL(attempt) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    media_info = info
+                    if info and (info.get("_type") == "playlist" or "entries" in info):
+                        entries = [e for e in (info.get("entries") or []) if e]
+                        if entries:
+                            media_info = entries[0]
+                    known_duration = float(media_info.get("duration") or 0) if media_info else 0.0
+                    if known_duration > 180:
+                        return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
+                    with yt_dlp.YoutubeDL(attempt) as downloader:
+                        downloader.download([url])
+                last_error = None
+                break
+            except Exception as exc:                 # try a smaller format next
+                last_error = exc
+                for path in glob.glob(os.path.join(VIDEO_CACHE, token + "-source.*")):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+        if last_error:
+            raise last_error
         sources = sorted(glob.glob(os.path.join(VIDEO_CACHE, token + "-source.*")))
         if not sources:
             raise RuntimeError("Download produced no video file")
@@ -317,11 +337,24 @@ def instagram_preview():
                     pass
             return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
         preview = video_cache_path(token, ".mp4")
-        subprocess.run([
-            "ffmpeg", "-y", "-i", source, "-vf", "scale=720:-2:flags=lanczos",
-            "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-            "-movflags", "+faststart", preview,
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=150)
+        # A 70-second clip does not need a full-resolution preview; smaller frames
+        # keep the conversion quick enough on modest hardware.
+        length = duration or known_duration
+        scale = 540 if length > 45 else 720
+        try:
+            subprocess.run([
+                "ffmpeg", "-y", "-i", source, "-vf", f"scale={scale}:-2:flags=lanczos",
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-movflags", "+faststart", preview,
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+               timeout=min(300, 60 + int(length or 0) * 4))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # Already a browser-friendly MP4? A stream copy is much cheaper than re-encoding.
+            if os.path.exists(preview):
+                os.remove(preview)
+            subprocess.run([
+                "ffmpeg", "-y", "-i", source, "-c", "copy", "-an", "-movflags", "+faststart", preview,
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
         if not duration or duration < 1:
             duration, preview_fps = probe_video(preview)
             if preview_fps:
@@ -499,12 +532,20 @@ def rest_from(value):
     return secs
 
 
+def workout_seconds(pid):
+    """Workout length: every step's time, except the final exercise's trailing rest."""
+    rows = db().execute("""select seconds, rest, exercise_id from steps
+        where program_id=? order by pos, id""", (pid,)).fetchall()
+    last_ex = max((i for i, r in enumerate(rows) if r["exercise_id"] is not None), default=-1)
+    return sum(r["seconds"] + ((r["rest"] or 0) if i != last_ex else 0) for i, r in enumerate(rows))
+
+
 # ---------- workouts ----------
 @app.get("/api/programs")
 def api_programs():
-    rows = db().execute("""select p.id, p.name, coalesce(sum(s.seconds + s.rest),0) total, count(s.id) steps
+    rows = db().execute("""select p.id, p.name, count(s.id) steps
         from programs p left join steps s on s.program_id=p.id group by p.id order by p.id""").fetchall()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([{**dict(r), "total": workout_seconds(r["id"])} for r in rows])
 
 
 @app.post("/api/programs")
@@ -731,7 +772,7 @@ def api_complete(pid):
         day = date.fromisoformat(str(body().get("day") or "")).isoformat()
     except ValueError:
         abort(400)
-    seconds = db().execute("select coalesce(sum(seconds + rest),0) from steps where program_id=?", (pid,)).fetchone()[0]
+    seconds = workout_seconds(pid)
     db().execute("insert into completions(program_id,name,day,ts,seconds) values(?,?,?,datetime('now'),?)",
                  (pid, p["name"], day, seconds))
     db().commit()

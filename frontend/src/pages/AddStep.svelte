@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Popup, View, Page, Navbar, NavLeft, NavRight, Link, f7 } from 'framework7-svelte';
-  import { api, thumb } from '../lib/api';
+  import { api, media, thumb } from '../lib/api';
+  import { openGif } from '../lib/state.svelte';
   import DurationPicker from '../lib/DurationPicker.svelte';
   import type { Category, Exercise, ProgramDetail } from '../types';
 
@@ -9,32 +10,42 @@
 
   let exercises = $state<Exercise[]>([]), categories = $state<Category[]>([]);
   let cat = $state<'all' | 'none' | number>('all');
-  let sel = $state<number | 'new' | null>(null);
+  let selected = $state<number[]>([]);
+  let addNew = $state(false);
   let newName = $state(''), file = $state<File | null>(null);
   let seconds = $state(60), rest = $state(30), busy = $state(false);
 
   const visible = $derived(exercises.filter(e => cat === 'all' || (cat === 'none' ? e.category_id === null : e.category_id === cat)));
   const hasUncat = $derived(exercises.some(e => e.category_id === null));
+  const count = $derived(selected.length + (addNew ? 1 : 0));
 
   $effect(() => {
     if (!opened) return;
-    sel = null; newName = ''; file = null; seconds = 60; rest = 30; cat = 'all';
-    api.exercises().then(r => { exercises = r.exercises; categories = r.categories; if (!r.exercises.length) sel = 'new'; })
-      .catch(e => f7.toast.show({ text: e.message, closeTimeout: 2500 }));
+    selected = []; addNew = false; newName = ''; file = null; seconds = 60; rest = 30; cat = 'all';
+    api.exercises().then(r => {
+      exercises = r.exercises; categories = r.categories;
+      if (!r.exercises.length) addNew = true;
+    }).catch(e => f7.toast.show({ text: e.message, closeTimeout: 2500 }));
   });
-  const ready = $derived(seconds > 0 && (sel === 'new' ? !!newName.trim() : sel !== null));
+  const toggle = (id: number) => {
+    selected = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
+  };
+  const preview = (e: Exercise) => { if (e.gif) openGif(media(e.gif)!, e.name); };
+  const ready = $derived(seconds > 0 && (selected.length > 0 || (addNew && !!newName.trim())));
 
   async function submit() {
     if (!ready || busy) return;
     busy = true;
     try {
-      let exId: number;
-      if (sel === 'new') {
+      const ids = [...selected];
+      if (addNew) {
         const fd = new FormData(); fd.set('name', newName.trim()); fd.set('category', '');
         if (file) fd.set('gif', file);
-        exId = (await api.addExercise(fd)).id;
-      } else exId = sel as number;
-      onadded(await api.addStep(pid, exId, seconds, rest));
+        ids.push((await api.addExercise(fd)).id);
+      }
+      let program: ProgramDetail | null = null;
+      for (const id of ids) program = await api.addStep(pid, id, seconds, rest);
+      if (program) onadded(program);
       opened = false;
     } catch (e) { f7.toast.show({ text: (e as Error).message, closeTimeout: 3000 }); }
     finally { busy = false; }
@@ -44,9 +55,9 @@
 <Popup {opened} swipeToClose onPopupClosed={() => (opened = false)}>
   <View>
     <Page>
-      <Navbar title="Add exercise">
+      <Navbar title="Add exercises">
         <NavLeft><Link popupClose>Cancel</Link></NavLeft>
-        <NavRight><Link onClick={submit} class={ready && !busy ? '' : 'disabled'}>Add</Link></NavRight>
+        <NavRight><Link onClick={submit} class={ready && !busy ? '' : 'disabled'}>Add{count > 1 ? ` (${count})` : ''}</Link></NavRight>
       </Navbar>
 
       {#if categories.length}
@@ -60,11 +71,19 @@
         <ul>
           {#each visible as e (e.id)}
             <li>
-              <label class="item-radio item-content">
-                <input type="radio" name="exercise" checked={sel === e.id} onchange={() => (sel = e.id)}>
-                <i class="icon icon-radio"></i>
+              <label class="item-checkbox item-content">
+                <input type="checkbox" checked={selected.includes(e.id)} onchange={() => toggle(e.id)}>
+                <i class="icon icon-checkbox"></i>
                 <div class="item-media">
-                  {#if e.gif}<img class="thumb" src={thumb(e.gif)} alt="" draggable="false" loading="lazy" decoding="async">{:else}<span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>{/if}
+                  {#if e.gif}
+                    <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${e.name} GIF full screen`}
+                          onclick={(ev) => { ev.preventDefault(); ev.stopPropagation(); preview(e); }}
+                          onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); preview(e); } }}>
+                      <img class="thumb" src={thumb(e.gif)} alt="" draggable="false" loading="lazy" decoding="async" />
+                    </span>
+                  {:else}
+                    <span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>
+                  {/if}
                 </div>
                 <div class="item-inner">
                   <div class="item-title">{e.name}<div class="item-footer">{e.category ?? 'Uncategorized'}</div></div>
@@ -73,9 +92,9 @@
             </li>
           {/each}
           <li>
-            <label class="item-radio item-content">
-              <input type="radio" name="exercise" checked={sel === 'new'} onchange={() => (sel = 'new')}>
-              <i class="icon icon-radio"></i>
+            <label class="item-checkbox item-content">
+              <input type="checkbox" checked={addNew} onchange={(e) => (addNew = e.currentTarget.checked)}>
+              <i class="icon icon-checkbox"></i>
               <div class="item-media"><span class="thumb letter">＋</span></div>
               <div class="item-inner"><div class="item-title">New exercise<div class="item-footer">Upload a GIF</div></div></div>
             </label>
@@ -84,7 +103,7 @@
       </div>
       {#if !visible.length && exercises.length}<p class="empty-note">No exercises in this category.</p>{/if}
 
-      {#if sel === 'new'}
+      {#if addNew}
         <div class="list inset-strong form-list">
           <ul>
             <li class="item-content item-input"><div class="item-inner"><div class="item-input-wrap">

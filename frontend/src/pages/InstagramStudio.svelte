@@ -39,16 +39,22 @@
   const minClip = $derived(Math.max(MIN_CLIP, 3 / Math.max(1, clip?.fps ?? 24)));
   const t = (x: number) => `${Math.floor(x / 60)}:${(x % 60).toFixed(2).padStart(5, '0')}`;
 
-  function clamp(which: 'start' | 'end', value: number) {
-    if (!clip) return value;
+  // Moving either handle carries the other one along so a 15-second window can
+  // be placed anywhere in a long video (otherwise the two handles deadlock).
+  function rangeFor(which: 'start' | 'end', value: number): [number, number] {
+    if (!clip) return [start, end];
     if (which === 'start') {
-      const lo = Math.max(0, end - MAX);
-      const hi = Math.min(end - minClip, clip.duration - minClip);
-      return hi < lo ? lo : Math.max(lo, Math.min(value, hi));
+      const s = Math.max(0, Math.min(value, clip.duration - minClip));
+      let e = Math.max(end, s + minClip);
+      if (e > s + MAX) e = s + MAX;
+      if (e > clip.duration) e = clip.duration;
+      return [s, e];
     }
-    const lo = start + minClip;
-    const hi = Math.min(clip.duration, start + MAX);
-    return hi < lo ? hi : Math.min(hi, Math.max(value, lo));
+    const e = Math.max(0, Math.min(value, clip.duration));
+    let s = Math.min(start, e - minClip);
+    if (s < e - MAX) s = e - MAX;
+    if (s < 0) s = 0;
+    return [s, e];
   }
 
   // Focusing the save form must not let a still-in-flight video seek drift the
@@ -84,11 +90,10 @@
   }
   function setRange(which: 'start' | 'end', value: number) {
     if (!clip) return;
-    const next = clamp(which, value);
-    if (which === 'start') start = next;
-    else end = next;
+    const [s, e] = rangeFor(which, value);
+    start = s; end = e;
     previewing = which;
-    freezePreview(next);
+    freezePreview(which === 'start' ? s : e);
   }
   async function save(e: Event) {
     e.preventDefault(); if (!clip || saving) return;

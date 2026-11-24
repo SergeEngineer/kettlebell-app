@@ -76,11 +76,14 @@
     api.program(id).then(p => {
       title = p.name;
       // Rest lives on the exercise it follows, so unfold it into its own phase for the timer.
-      const phases: Item[] = p.steps.flatMap(s => {
-        const gif = media(s.gif);
-        if (s.kind === 'rest') return [{ name: 'Rest', seconds: s.seconds, gif, kind: 'rest' as const }];
-        const work: Item = { name: s.name, seconds: s.seconds, gif, kind: 'ex' };
-        return s.rest > 0 ? [work, { name: 'Rest', seconds: s.rest, gif, kind: 'rest' as const }] : [work];
+      // The final exercise has no rest phase: the workout finishes when it ends.
+      const lastExercise = p.steps.map(s => s.kind === 'ex').lastIndexOf(true);
+      const phases: Item[] = p.steps.flatMap((s, idx) => {
+        if (s.kind === 'rest') return [{ name: 'Rest', seconds: s.seconds, gif: null, kind: 'rest' as const }];
+        const work: Item = { name: s.name, seconds: s.seconds, gif: media(s.gif), kind: 'ex' };
+        // A rest phase has no GIF of its own: the player shows the next exercise's GIF instead.
+        const rest: Item = { name: 'Rest', seconds: s.rest, gif: null, kind: 'rest' };
+        return s.rest > 0 && idx < lastExercise ? [work, rest] : [work];
       });
       seq = [READY, ...phases];
       total = remain = READY.seconds * 1000;
