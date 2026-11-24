@@ -11,6 +11,7 @@
     { opened: boolean; categories: Category[]; onsaved: () => void } = $props();
 
   let url = $state(''), status = $state(''), loading = $state(false), saving = $state(false);
+  let slowTimer: ReturnType<typeof setTimeout> | undefined;
   let clip = $state<IgPreview | null>(null);
   let video: HTMLVideoElement | undefined = $state();
   let start = $state(0), end = $state(5), name = $state(''), category = $state(''), newCategory = $state('');
@@ -72,21 +73,27 @@
     clip = null; video?.removeAttribute('src'); cropping = false; crop = null;
   }
   function reset() {
-    release();
+    release(); clearTimeout(slowTimer);
     url = ''; name = ''; category = ''; newCategory = '';
     status = ''; statusError = false; attempted = false;
   }
   $effect(() => { if (!opened) reset(); });
-  onDestroy(release);
+  onDestroy(() => { clearTimeout(slowTimer); release(); });
 
   async function load(e: Event) {
     e.preventDefault(); loading = true; statusError = false; attempted = false; status = 'Loading and preparing the video…'; release();
+    // Long reels legitimately take a while to download and prepare; reassure the
+    // user instead of leaving one static message on screen.
+    clearTimeout(slowTimer);
+    slowTimer = setTimeout(() => {
+      if (loading) status = 'Still preparing the video — long clips can take up to a minute…';
+    }, 8000);
     try {
       const p = await api.igPreview(url.trim());
       clip = p; start = 0; end = Math.min(5, p.duration, MAX); previewing = 'start';
       status = 'Drag the sliders to pick the first and last frame.';
     } catch (err) { status = (err as Error).message; }
-    finally { loading = false; }
+    finally { clearTimeout(slowTimer); loading = false; }
   }
   function setRange(which: 'start' | 'end', value: number) {
     if (!clip) return;

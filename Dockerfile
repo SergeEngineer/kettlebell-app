@@ -17,4 +17,7 @@ COPY --from=web /web/dist ./web
 ENV DATA_DIR=/data WEB_DIR=/app/web
 VOLUME /data
 EXPOSE 8088
-CMD ["gunicorn","-b","0.0.0.0:8088","-w","2","--access-logfile","-","app:app"]
+# Downloading/transcoding a long Instagram clip can take well over a minute.
+# Gunicorn's default 30 s timeout killed the worker mid-request (surfacing as a
+# 502), so allow long requests and serve them on threaded workers.
+CMD ["gunicorn","-b","0.0.0.0:8088","-w","2","--threads","4","--timeout","300","--graceful-timeout","30","--access-logfile","-","app:app"]

@@ -4,7 +4,7 @@
   import { api, fmt, media as mediaUrl, thumb as thumbUrl } from '../lib/api';
   import { ui, bump, openGif } from '../lib/state.svelte';
   import { grip } from '../lib/reorder';
-  import DurationPicker from '../lib/DurationPicker.svelte';
+  import DurationTabs from '../lib/DurationTabs.svelte';
   import AddStep from './AddStep.svelte';
   import type { ProgramDetail, Step } from '../types';
 
@@ -109,12 +109,12 @@
         </ListItem>
         {#if open === s.id}
           <li class="steppick">
-            <div class="step-pick-label">Exercise for</div>
-            <DurationPicker seconds={s.seconds} onchange={(v) => setStep(s, { seconds: v })} />
-            {#if s.kind === 'ex'}
-              <div class="step-pick-label">Rest after</div>
-              <DurationPicker seconds={s.rest} onchange={(v) => setStep(s, { rest: v })} />
-            {/if}
+            <DurationTabs
+              seconds={s.seconds}
+              onseconds={(v) => setStep(s, { seconds: v })}
+              rest={s.kind === 'ex' ? s.rest : null}
+              onrest={s.kind === 'ex' ? (v) => setStep(s, { rest: v }) : null}
+              timeLabel={s.kind === 'rest' ? 'Rest time' : 'Exercise time'} />
           </li>
         {/if}
       {/each}

@@ -2,7 +2,7 @@
   import { Popup, View, Page, Navbar, NavLeft, NavRight, Link, f7 } from 'framework7-svelte';
   import { api, media, thumb } from '../lib/api';
   import { openGif } from '../lib/state.svelte';
-  import DurationPicker from '../lib/DurationPicker.svelte';
+  import DurationTabs from '../lib/DurationTabs.svelte';
   import type { Category, Exercise, ProgramDetail } from '../types';
 
   let { opened = $bindable(false), pid, onadded }:
@@ -116,12 +116,10 @@
         </div>
       {/if}
 
-      <div class="block-title">Exercise for</div>
-      <div class="list inset-strong"><ul><li class="steppick"><DurationPicker {seconds} onchange={(v) => (seconds = v)} /></li></ul></div>
-
-      <div class="block-title">Rest after</div>
-      <div class="list inset-strong"><ul><li class="steppick"><DurationPicker seconds={rest} onchange={(v) => (rest = v)} /></li></ul></div>
-      {#if rest === 0}<p class="help">No rest after this exercise.</p>{/if}
+      <div class="block-title">Duration</div>
+      <div class="list inset-strong"><ul><li class="steppick">
+        <DurationTabs {seconds} onseconds={(v) => (seconds = v)} {rest} onrest={(v) => (rest = v)} />
+      </li></ul></div>
     </Page>
   </View>
 </Popup>

@@ -220,6 +220,53 @@ def probe_video(path):
     return duration, fps
 
 
+def probe_stream(path):
+    """Return (codec, pix_fmt, profile, rotation) for the first video stream."""
+    if not (path and os.path.isfile(path) and shutil.which("ffprobe")):
+        return None, None, None, 0
+    try:
+        res = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries",
+            "stream=codec_name,pix_fmt,profile:stream_side_data=rotation:stream_tags=rotate",
+            "-of", "json", path,
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        streams = (json.loads(res.stdout) if res.stdout else {}).get("streams") or []
+        if streams:
+            stream = streams[0]
+            rotation = 0
+            for item in stream.get("side_data_list") or []:
+                if item.get("rotation"):
+                    rotation = int(item["rotation"])
+            tags = stream.get("tags") or {}
+            if not rotation and tags.get("rotate"):
+                try:
+                    rotation = int(str(tags["rotate"]).strip())
+                except ValueError:
+                    rotation = 0
+            return (stream.get("codec_name"), stream.get("pix_fmt"),
+                    stream.get("profile"), rotation)
+    except Exception as exc:
+        app.logger.warning("ffprobe failed for %s: %s", path, exc)
+    return None, None, None, 0
+
+
+def browser_ready(path):
+    """True when a source can be remuxed for the preview instead of re-encoded."""
+    codec, pixel_format, profile, rotation = probe_stream(path)
+    if codec != "h264":
+        return False
+    if not (pixel_format or "").startswith(("yuv420p", "yuvj420p")):
+        return False
+    # Rotation metadata is ignored by some browsers, so let ffmpeg rotate the
+    # pixels (autorotate) during a re-encode instead of copying the matrix.
+    if rotation % 360:
+        return False
+    # High 10 / 4:2:2 / 4:4:4 H.264 does not play in every browser.
+    unsafe = ("10", "422", "444", "4:2:2", "4:4:4")
+    return not any(token in (profile or "") for token in unsafe)
+
+
 def ensure_category(name):
     """Find or create a category and make sure its upload folder exists."""
     name = " ".join(name.split())
@@ -337,24 +384,41 @@ def instagram_preview():
                     pass
             return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
         preview = video_cache_path(token, ".mp4")
-        # A 70-second clip does not need a full-resolution preview; smaller frames
-        # keep the conversion quick enough on modest hardware.
-        length = duration or known_duration
-        scale = 540 if length > 45 else 720
-        try:
-            subprocess.run([
-                "ffmpeg", "-y", "-i", source, "-vf", f"scale={scale}:-2:flags=lanczos",
-                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-movflags", "+faststart", preview,
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-               timeout=min(300, 60 + int(length or 0) * 4))
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            # Already a browser-friendly MP4? A stream copy is much cheaper than re-encoding.
-            if os.path.exists(preview):
+        # Instagram nearly always serves H.264 MP4. Remuxing such a source takes
+        # a moment instead of minutes, which keeps long clips inside gunicorn
+        # and reverse-proxy request timeouts. Re-encode only when necessary.
+        converted = False
+        if browser_ready(source):
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", source, "-map", "0:v:0", "-c", "copy",
+                    "-an", "-movflags", "+faststart", preview,
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   timeout=180)
+                converted = os.path.exists(preview) and os.path.getsize(preview) > 0
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                converted = False
+            if not converted and os.path.exists(preview):
                 os.remove(preview)
-            subprocess.run([
-                "ffmpeg", "-y", "-i", source, "-c", "copy", "-an", "-movflags", "+faststart", preview,
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        if not converted:
+            # A 70-second clip does not need full resolution; smaller frames keep
+            # the conversion quick enough on modest hardware.
+            length = duration or known_duration
+            scale = 540 if length > 45 else 720
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", source, "-vf", f"scale={scale}:-2:flags=lanczos",
+                    "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", preview,
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   timeout=min(600, 60 + int(length or 0) * 6))
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                # Last resort: keep the original bitstream, even if it is large.
+                if os.path.exists(preview):
+                    os.remove(preview)
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", source, "-c", "copy", "-an", "-movflags", "+faststart", preview,
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
         if not duration or duration < 1:
             duration, preview_fps = probe_video(preview)
             if preview_fps:
