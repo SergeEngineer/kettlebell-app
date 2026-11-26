@@ -30,7 +30,7 @@
   const toggle = (id: number) => {
     selected = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
   };
-  const preview = (e: Exercise) => { if (e.gif) openGif(media(e.gif)!, e.name); };
+  const preview = (e: Exercise) => { if (e.gif) openGif(media(e.gif, e.version)!, e.name); };
   const ready = $derived(seconds > 0 && (selected.length > 0 || (addNew && !!newName.trim())));
 
   async function submit() {
@@ -78,7 +78,7 @@
                     <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${e.name} GIF full screen`}
                           onclick={(ev) => { ev.preventDefault(); ev.stopPropagation(); preview(e); }}
                           onkeydown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); preview(e); } }}>
-                      <img class="thumb" src={thumb(e.gif)} alt="" draggable="false" loading="lazy" decoding="async" />
+                      <img class="thumb" src={thumb(e.gif, e.version)} alt="" draggable="false" loading="lazy" decoding="async" />
                     </span>
                   {:else}
                     <span class="thumb letter">{e.name.slice(0, 1).toUpperCase()}</span>

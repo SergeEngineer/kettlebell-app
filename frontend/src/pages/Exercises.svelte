@@ -14,21 +14,14 @@
   let cropping = $state<Exercise | null>(null), cropBusy = $state(false), pendingCrop = $state<Exercise | null>(null);
   let trimming = $state<{ exercise: Exercise; info: GifInfo } | null>(null), trimBusy = $state(false);
   let pendingTrim = $state<Exercise | null>(null);
-  let versions = $state<Record<number, number>>({});
   let cat = $state<'all' | 'none' | number>('all');
 
   const visible = $derived((exercises ?? []).filter(e =>
     cat === 'all' || (cat === 'none' ? e.category_id === null : e.category_id === cat)));
   const hasUncat = $derived((exercises ?? []).some(e => e.category_id === null));
 
-  const gifSrc = (e: Exercise) => {
-    const url = mediaUrl(e.gif);
-    return url && versions[e.id] ? `${url}?v=${versions[e.id]}` : url;
-  };
-  const thumbSrc = (e: Exercise) => {
-    const url = thumb(e.gif);
-    return url && versions[e.id] ? `${url}&v=${versions[e.id]}` : url;
-  };
+  const gifSrc = (e: Exercise) => mediaUrl(e.gif, e.version);
+  const thumbSrc = (e: Exercise) => thumb(e.gif, e.version);
 
   async function load() {
     try {
@@ -51,8 +44,7 @@
     cropBusy = true;
     try {
       const updated = await api.cropExercise(target.id, c);
-      exercises = exercises?.map(x => x.id === updated.id ? updated : x) ?? null;
-      versions = { ...versions, [target.id]: Date.now() };   // force the cropped file to reload
+      exercises = exercises?.map(x => x.id === updated.id ? updated : x) ?? null;   // new version reloads the cropped file
       bump();
       f7.toast.show({ text: 'GIF cropped.', closeTimeout: 2000 });
       cropping = null;
@@ -73,8 +65,7 @@
     trimBusy = true;
     try {
       const updated = await api.trimExercise(target.id, start, end);
-      exercises = exercises?.map(x => x.id === updated.id ? updated : x) ?? null;
-      versions = { ...versions, [target.id]: Date.now() };   // reload the shortened GIF
+      exercises = exercises?.map(x => x.id === updated.id ? updated : x) ?? null;   // new version reloads the shortened GIF
       bump();
       f7.toast.show({ text: 'GIF trimmed.', closeTimeout: 2000 });
       trimming = null;

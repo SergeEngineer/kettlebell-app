@@ -18,11 +18,16 @@ export function duration(s: number) {
   const m = Math.floor(s / 60), r = s % 60;
   return [m && `${m} ${m === 1 ? 'minute' : 'minutes'}`, r && `${r} ${r === 1 ? 'second' : 'seconds'}`].filter(Boolean).join(' ');
 }
-export const media = (gif: string | null) => (gif ? '/media/' + gif.split('/').map(encodeURIComponent).join('/') : null);
+/** Media URLs carry the file's mtime so a re-crop or re-trim is never served from cache. */
+export const media = (gif: string | null, version?: number) => {
+  if (!gif) return null;
+  const url = '/media/' + gif.split('/').map(encodeURIComponent).join('/');
+  return version ? `${url}?v=${version}` : url;
+};
 /** Small static JPEG preview of a GIF, for list rows where animating every file would be slow. */
-export const thumb = (gif: string | null) => {
-  const url = media(gif);
-  return url ? url + '?thumb=1' : null;
+export const thumb = (gif: string | null, version?: number) => {
+  const url = media(gif, version);
+  return url ? url + (url.includes('?') ? '&' : '?') + 'thumb=1' : null;
 };
 
 export const api = {

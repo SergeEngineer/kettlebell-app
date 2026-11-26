@@ -591,10 +591,22 @@ def upload_too_large(e):
 
 
 # ---------- serializers ----------
+def media_version(rel):
+    """File mtime in nanoseconds, used in media URLs to defeat stale image caches."""
+    if not rel:
+        return 0
+    try:
+        return os.stat(os.path.join(UPLOADS, rel)).st_mtime_ns
+    except OSError:
+        return 0
+
+
 def exercise_json(eid):
     r = db().execute("""select e.id, e.name, e.gif, e.category_id, c.name category from exercises e
         left join categories c on c.id=e.category_id where e.id=?""", (eid,)).fetchone()
-    return dict(r) if r else None
+    if not r:
+        return None
+    return {**dict(r), "version": media_version(r["gif"])}
 
 
 def steps_json(pid):
@@ -602,7 +614,7 @@ def steps_json(pid):
         from steps s left join exercises e on e.id=s.exercise_id
         where s.program_id=? order by s.pos, s.id""", (pid,)).fetchall()
     return [{"id": r["id"], "seconds": r["seconds"], "rest": r["rest"] or 0, "exercise_id": r["exercise_id"],
-             "name": r["name"] or "Rest", "gif": r["gif"],
+             "name": r["name"] or "Rest", "gif": r["gif"], "version": media_version(r["gif"]),
              "kind": "ex" if r["exercise_id"] else "rest"} for r in rows]
 
 
@@ -750,7 +762,8 @@ def api_exercises():
     rows = db().execute("""select e.id, e.name, e.gif, e.category_id, c.name category from exercises e
         left join categories c on c.id=e.category_id order by e.name collate nocase""").fetchall()
     cats = db().execute("select id, name from categories order by name collate nocase").fetchall()
-    return jsonify(exercises=[dict(r) for r in rows], categories=[dict(r) for r in cats])
+    return jsonify(exercises=[{**dict(r), "version": media_version(r["gif"])} for r in rows],
+                   categories=[dict(r) for r in cats])
 
 
 @app.post("/api/exercises")

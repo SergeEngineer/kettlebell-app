@@ -87,9 +87,9 @@
           {#snippet media()}
             {#if s.gif}
               <span class="thumbbtn" role="button" tabindex="0" aria-label={`View ${s.name} GIF full screen`}
-                    onclick={(e) => { e.stopPropagation(); openGif(mediaUrl(s.gif)!, s.name); }}
-                    onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openGif(mediaUrl(s.gif)!, s.name); } }}>
-                <img class="thumb" src={thumbUrl(s.gif)} alt="" draggable="false" loading="lazy" decoding="async" />
+                    onclick={(e) => { e.stopPropagation(); openGif(mediaUrl(s.gif, s.version)!, s.name); }}
+                    onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openGif(mediaUrl(s.gif, s.version)!, s.name); } }}>
+                <img class="thumb" src={thumbUrl(s.gif, s.version)} alt="" draggable="false" loading="lazy" decoding="async" />
               </span>
             {:else}
               <span class="thumb letter">{s.kind === 'rest' ? 'Rest' : s.name.slice(0, 1).toUpperCase()}</span>

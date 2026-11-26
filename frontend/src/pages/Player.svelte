@@ -80,7 +80,7 @@
       const lastExercise = p.steps.map(s => s.kind === 'ex').lastIndexOf(true);
       const phases: Item[] = p.steps.flatMap((s, idx) => {
         if (s.kind === 'rest') return [{ name: 'Rest', seconds: s.seconds, gif: null, kind: 'rest' as const }];
-        const work: Item = { name: s.name, seconds: s.seconds, gif: media(s.gif), kind: 'ex' };
+        const work: Item = { name: s.name, seconds: s.seconds, gif: media(s.gif, s.version), kind: 'ex' };
         // A rest phase has no GIF of its own: the player shows the next exercise's GIF instead.
         const rest: Item = { name: 'Rest', seconds: s.rest, gif: null, kind: 'rest' };
         return s.rest > 0 && idx < lastExercise ? [work, rest] : [work];
