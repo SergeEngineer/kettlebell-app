@@ -6,11 +6,11 @@
   import CropEditor from '../lib/CropEditor.svelte';
   import TrimEditor from '../lib/TrimEditor.svelte';
   import ExerciseForm from './ExerciseForm.svelte';
-  import InstagramStudio from './InstagramStudio.svelte';
+  import VideoStudio from './VideoStudio.svelte';
   import type { Category, Crop, Exercise, GifInfo } from '../types';
 
   let exercises = $state<Exercise[] | null>(null), categories = $state<Category[]>([]);
-  let menu = $state(false), uploading = $state(false), instagram = $state(false), editing = $state<Exercise | null>(null);
+  let menu = $state(false), videoUpload = $state(false), instagram = $state(false), editing = $state<Exercise | null>(null);
   let cropping = $state<Exercise | null>(null), cropBusy = $state(false), pendingCrop = $state<Exercise | null>(null);
   let trimming = $state<{ exercise: Exercise; info: GifInfo } | null>(null), trimBusy = $state(false);
   let pendingTrim = $state<Exercise | null>(null);
@@ -139,22 +139,22 @@
       <Block class="empty">No exercises in this category.</Block>
     {/if}
   {:else if exercises}
-    <Block class="empty">No exercises yet. Tap Add to upload a GIF or make one from an Instagram video.</Block>
+    <Block class="empty">No exercises yet. Tap Add to upload a video or make one from an Instagram video.</Block>
   {/if}
 
   <Actions opened={menu} onActionsClosed={() => (menu = false)}>
     <ActionsGroup>
       <ActionsLabel>New exercise</ActionsLabel>
       <!-- F7's ActionsButton only calls a lowercase `onclick` (and that replaces its auto-close), so close the menu here -->
-      <ActionsButton onclick={() => { menu = false; uploading = true; }}>Upload a GIF</ActionsButton>
+      <ActionsButton onclick={() => { menu = false; videoUpload = true; }}>Upload a Video</ActionsButton>
       <ActionsButton onclick={() => { menu = false; instagram = true; }}>Create from an Instagram video</ActionsButton>
     </ActionsGroup>
     <ActionsGroup><ActionsButton strong close>Cancel</ActionsButton></ActionsGroup>
   </Actions>
 
-  <ExerciseForm mode="create" bind:opened={uploading} {categories} onsaved={saved} />
-  <ExerciseForm mode="edit" opened={!!editing} exercise={editing} {categories} onsaved={saved} onclosed={editClosed} oncrop={cropFromEdit} ontrim={trimFromEdit} />
-  <InstagramStudio bind:opened={instagram} {categories} onsaved={saved} />
+  <ExerciseForm opened={!!editing} exercise={editing} {categories} onsaved={saved} onclosed={editClosed} oncrop={cropFromEdit} ontrim={trimFromEdit} />
+  <VideoStudio source="video" bind:opened={videoUpload} {categories} onsaved={saved} />
+  <VideoStudio source="instagram" bind:opened={instagram} {categories} onsaved={saved} />
 
   <Popup opened={!!cropping} onPopupClosed={() => (cropping = null)}>
     <View>

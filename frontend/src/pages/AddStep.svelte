@@ -12,7 +12,7 @@
   let cat = $state<'all' | 'none' | number>('all');
   let selected = $state<number[]>([]);
   let addNew = $state(false);
-  let newName = $state(''), file = $state<File | null>(null);
+  let newName = $state('');
   let seconds = $state(60), rest = $state(30), busy = $state(false);
 
   const visible = $derived(exercises.filter(e => cat === 'all' || (cat === 'none' ? e.category_id === null : e.category_id === cat)));
@@ -21,7 +21,7 @@
 
   $effect(() => {
     if (!opened) return;
-    selected = []; addNew = false; newName = ''; file = null; seconds = 60; rest = 30; cat = 'all';
+    selected = []; addNew = false; newName = ''; seconds = 60; rest = 30; cat = 'all';
     api.exercises().then(r => {
       exercises = r.exercises; categories = r.categories;
       if (!r.exercises.length) addNew = true;
@@ -40,7 +40,6 @@
       const ids = [...selected];
       if (addNew) {
         const fd = new FormData(); fd.set('name', newName.trim()); fd.set('category', '');
-        if (file) fd.set('gif', file);
         ids.push((await api.addExercise(fd)).id);
       }
       let program: ProgramDetail | null = null;
@@ -96,7 +95,7 @@
               <input type="checkbox" checked={addNew} onchange={(e) => (addNew = e.currentTarget.checked)}>
               <i class="icon icon-checkbox"></i>
               <div class="item-media"><span class="thumb letter">＋</span></div>
-              <div class="item-inner"><div class="item-title">New exercise<div class="item-footer">Upload a GIF</div></div></div>
+              <div class="item-inner"><div class="item-title">New exercise<div class="item-footer">Create without a GIF</div></div></div>
             </label>
           </li>
         </ul>
@@ -109,11 +108,9 @@
             <li class="item-content item-input"><div class="item-inner"><div class="item-input-wrap">
               <input type="text" placeholder="Exercise name" autocapitalize="words" bind:value={newName}>
             </div></div></li>
-            <li class="item-content item-input"><div class="item-inner"><div class="item-input-wrap">
-              <input type="file" accept="image/gif,image/webp,image/png,image/jpeg" onchange={(e) => (file = e.currentTarget.files?.[0] ?? null)}>
-            </div></div></li>
           </ul>
         </div>
+        <p class="empty-note">To give it a GIF, use Add → Upload a Video on the Exercises tab.</p>
       {/if}
 
       <div class="block-title">Duration</div>

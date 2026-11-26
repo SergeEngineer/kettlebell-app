@@ -59,10 +59,10 @@ li.lifting { position: relative; z-index: 5; background: var(--f7-list-bg-color,
 @keyframes field-flash { 50% { background: rgba(255, 69, 58, .22); } }
 @media (prefers-reduced-motion: reduce) { .field-invalid .item-input-wrap { animation: none; } }
 
-/* ---- Instagram studio ---- */
-.ig-studio .help { opacity: .72; }
-.ig-studio .help.status-error { opacity: 1; }
-.igvideo { display: block; width: calc(100% - 32px); margin: 8px 16px; border-radius: 14px; background: #000; max-height: 46vh; }
+/* ---- video studio ---- */
+.video-studio .help { opacity: .72; }
+.video-studio .help.status-error { opacity: 1; }
+.studio-video { display: block; width: calc(100% - 32px); margin: 8px 16px; border-radius: 14px; background: #000; max-height: 46vh; }
 .sliderrow { display: block; width: 100%; padding: 10px 0; }
 .slider-label { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; color: #8e8e93; }
 .slider-label output { color: var(--f7-theme-color); font-variant-numeric: tabular-nums; }
@@ -74,7 +74,7 @@ li.lifting { position: relative; z-index: 5; background: var(--f7-list-bg-color,
 .kb-range:focus-visible .kb-range-thumb, .kb-range.dragging .kb-range-thumb { box-shadow: 0 0 0 4px rgba(var(--f7-theme-color-rgb), .35), 0 1px 5px rgba(0, 0, 0, .35); }
 .crop-row { display: flex; gap: 10px; justify-content: center; padding: 2px 16px 8px; }
 .crop-row .button { flex: 1; max-width: 220px; margin: 0; }
-.ig-studio .crop-row + .list { margin-top: 8px; }
+.video-studio .crop-row + .list { margin-top: 8px; }
 .crop-stage { display: flex; justify-content: center; padding: 8px 16px 0; }
 .crop-wrap { position: relative; display: inline-block; max-width: 100%; overflow: hidden; border-radius: 12px; background: #000; touch-action: none; user-select: none; }
 .crop-media { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; }

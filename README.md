@@ -6,6 +6,7 @@ A small web app for building kettlebell workouts and running them with a countdo
 
 **Exercises**
 - Save an exercise as a name, a category and a GIF showing the movement. Pick an existing category or create a new one while saving. Each category gets its own folder under `/data/uploads/` (for example `/data/uploads/Kettlebell/Kettlebell Swing.gif`); GIFs are renamed when you rename the exercise.
+- Upload a video from your phone and turn a chosen section into a GIF.
 - Create a GIF from a public Instagram post or Reel by loading its URL, previewing the video, and choosing the start and end frames (up to 15 seconds).
 - Tap an exercise to rename it or change its category; its GIF moves to the new category folder. Tap the thumbnail to view the GIF full screen.
 - Swipe an exercise left to delete it.
@@ -66,7 +67,7 @@ kettlebell/
 │   └── src/
 │       ├── main.ts, App.svelte, routes.ts, app.css, types.ts
 │       ├── pages/             Workouts, Workout (editor), AddStep, Exercises,
-│       │                      ExerciseForm, InstagramStudio, Calendar, Player
+│       │                      ExerciseForm, VideoStudio, Calendar, Player
 │       └── lib/               api.ts, state.svelte.ts, reorder.ts (drag gesture),
 │                              DurationPicker, GifViewer, CategoryFields, awake.ts
 ├── static/                    icon-180.png, nosleep.mp4, manifest.webmanifest
@@ -84,8 +85,9 @@ kettlebell/
 | `GET/POST /api/programs`, `GET/PATCH/DELETE /api/programs/<id>` | Workouts |
 | `POST /api/programs/<id>/steps`, `PUT /api/programs/<id>/order` | Add a step, reorder steps |
 | `PATCH/DELETE /api/steps/<id>` | Change a step's time, delete a step |
-| `GET/POST /api/exercises`, `PATCH/DELETE /api/exercises/<id>` | Exercise library (POST is multipart for the GIF) |
-| `POST /api/instagram/preview`, `/save`, `/release` | Instagram clip studio |
+| `GET/POST /api/exercises`, `PATCH/DELETE /api/exercises/<id>` | Exercise library (POST creates a name-only exercise) |
+| `POST /api/videos`, `GET /api/videos/<token>`, `/save`, `/release` | Upload a video and cut GIFs from its preview |
+| `POST /api/instagram/preview` | Load an Instagram video into the same clip studio |
 | `GET /api/calendar`, `POST /api/programs/<id>/complete` | Calendar and completed workouts |
 | `GET /media/<path>` | Uploaded GIFs |
 
@@ -207,8 +209,8 @@ Note if you updating the app to the latest version by replacing all files from r
 - **Sound on iPhone:** Safari only allows sound after a tap, so the player starts with a "Tap to begin" screen.
 - **Updating from the HTMX version:** delete the old `templates/` folder and `static/app.css` / `static/htmx.min.js`; keep `static/icon-180.png`, `static/nosleep.mp4` and `static/manifest.webmanifest`. The first `docker build` takes longer because it installs the npm packages.
 - **No login:** the app has no authentication. Keep it on your home network or behind a VPN.
-- **GIF uploads:** `.gif`, `.webp`, `.png` and `.jpg` files up to 30 MB. Files are stored in `/data/uploads/<Category>/` and the folder is created automatically when you add a category.
-- **Instagram video cache:** downloaded previews are kept in `/data/video-cache` while you stay on the Exercises page. They are deleted when you leave the page, with a one-hour cleanup as a fallback.
+- **Video uploads:** MP4, MOV, M4V, WebM, MKV, AVI or 3GP up to 3 minutes and 300 MB. The chosen section becomes a GIF stored in `/data/uploads/<Category>/`; the folder is created automatically when you add a category.
+- **Video preview cache:** Instagram downloads and uploaded videos are kept in `/data/video-cache` while you stay on the Exercises page. They are deleted when you close the studio, with a one-hour cleanup as a fallback.
 
 ## Configuration
 

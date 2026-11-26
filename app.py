@@ -13,11 +13,14 @@ os.makedirs(UPLOADS, exist_ok=True)
 os.makedirs(VIDEO_CACHE, exist_ok=True)
 os.makedirs(THUMBS, exist_ok=True)
 ALLOWED = {".gif", ".webp", ".png", ".jpg", ".jpeg"}
+VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp", ".mpeg", ".mpg"}
 MAX_SECONDS = 99 * 60 + 59
 MIN_GIF_SECONDS = 0.25
+MAX_VIDEO_BYTES = 300 * 1024 * 1024
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
+# Three-minute 1080p phone videos can easily exceed the old 30 MB image limit.
+app.config["MAX_CONTENT_LENGTH"] = MAX_VIDEO_BYTES
 
 
 def db():
@@ -77,19 +80,6 @@ def unique_name(base, ext, exclude=None, folder=None):
         fn = f"{base} ({n}){ext}"
         n += 1
     return fn
-
-
-def save_gif(f, name, category=None):
-    """Save the upload in its category folder, using the exercise name as the file name."""
-    if f and f.filename:
-        ext = os.path.splitext(f.filename)[1].lower()
-        if ext in ALLOWED:
-            folder = category_folder(category)
-            os.makedirs(folder, exist_ok=True)
-            fn = unique_name(sanitize(name), ext, folder=folder)
-            f.save(os.path.join(folder, fn))
-            return rel_upload_path(os.path.join(folder, fn))
-    return None
 
 
 # ---------- list thumbnails ----------
@@ -268,6 +258,64 @@ def browser_ready(path):
     return not any(token in (profile or "") for token in unsafe)
 
 
+def prepare_video(source, token, duration=0.0, fps=0.0):
+    """Validate a source video and cache a browser-playable preview for one token.
+
+    Shared by Instagram downloads and iPhone uploads. Returns (duration, fps) and
+    raises ValueError with a user-facing message when the clip is unusable.
+    """
+    probed_duration, probed_fps = probe_video(source)
+    duration = probed_duration or float(duration or 0.0)
+    fps = float(fps or 0.0) or probed_fps or 30.0
+    codec, _, _, _ = probe_stream(source)
+    if not codec:
+        raise ValueError("That file does not contain a playable video track.")
+    if not duration or duration < 1 or duration > 180:
+        raise ValueError("The video must be between 1 second and 3 minutes long.")
+    preview = video_cache_path(token, ".mp4")
+    # Most phone and Instagram videos are H.264 MP4. Remuxing such a source takes
+    # a moment instead of minutes, which keeps long clips inside request timeouts.
+    converted = False
+    if browser_ready(source):
+        try:
+            subprocess.run([
+                "ffmpeg", "-y", "-i", source, "-map", "0:v:0", "-c", "copy",
+                "-an", "-movflags", "+faststart", preview,
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+               timeout=180)
+            converted = os.path.exists(preview) and os.path.getsize(preview) > 0
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            converted = False
+        if not converted and os.path.exists(preview):
+            os.remove(preview)
+    if not converted:
+        # A 70-second clip does not need full resolution; smaller frames keep the
+        # conversion quick enough on modest hardware.
+        scale = 540 if duration > 45 else 720
+        try:
+            subprocess.run([
+                "ffmpeg", "-y", "-i", source, "-vf", f"scale={scale}:-2:flags=lanczos",
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart", preview,
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+               timeout=min(600, 60 + int(duration) * 6))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            # Last resort: keep the original bitstream, even if it is large.
+            if os.path.exists(preview):
+                os.remove(preview)
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", source, "-c", "copy", "-an", "-movflags", "+faststart", preview,
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                raise ValueError("The video could not be prepared. Try a different file.")
+    if not os.path.isfile(preview) or os.path.getsize(preview) <= 0:
+        raise ValueError("The video could not be prepared. Try a different file.")
+    with open(video_cache_path(token, ".json"), "w", encoding="utf-8") as metadata:
+        json.dump({"duration": duration, "fps": fps}, metadata)
+    return duration, fps
+
+
 def ensure_category(name):
     """Find or create a category and make sure its upload folder exists."""
     name = " ".join(name.split())
@@ -319,6 +367,120 @@ def normalized_crop(value):
     return f"crop=iw*{w:.6f}:ih*{h:.6f}:iw*{x:.6f}:ih*{y:.6f}"
 
 
+# ---------- video import ----------
+@app.post("/api/videos")
+def upload_video():
+    """Accept a video from the phone and prepare the same preview used for Reels."""
+    clean_video_cache()
+    upload = request.files.get("video")
+    if not upload or not upload.filename:
+        return jsonify(error="Choose a video file."), 400
+    ext = os.path.splitext(upload.filename)[1].lower()
+    if ext not in VIDEO_EXT:
+        return jsonify(error="Choose an MP4, MOV, M4V, WebM, MKV, AVI or 3GP video."), 400
+    if not shutil.which("ffmpeg"):
+        return jsonify(error="Video conversion is unavailable because ffmpeg is not installed."), 503
+    token = uuid.uuid4().hex
+    source = video_cache_path(token, "-source" + ext)
+    try:
+        upload.save(source)
+        duration, fps = prepare_video(source, token)
+        for path in glob.glob(os.path.join(VIDEO_CACHE, token + "-source.*")):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        return jsonify(token=token, duration=duration, fps=fps,
+                       video_url=f"/api/videos/{token}")
+    except ValueError as exc:
+        release_video_cache(token)
+        return jsonify(error=str(exc)), 400
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        release_video_cache(token)
+        app.logger.exception("Video upload failed")
+        return jsonify(error="Could not process this video. Try a shorter MP4 or MOV file."), 422
+
+
+@app.get("/api/videos/<token>")
+def video_preview(token):
+    return send_from_directory(VIDEO_CACHE, os.path.basename(video_cache_path(token, ".mp4")),
+                               mimetype="video/mp4", max_age=0)
+
+
+@app.post("/api/videos/release")
+def release_video():
+    """Called by the studio when it closes, so preview files do not linger."""
+    release_video_cache(str((request.get_json(silent=True) or {}).get("token") or ""))
+    return "", 204
+
+
+@app.post("/api/videos/save")
+def save_video_gif():
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("token") or "")
+    clean_video_cache(keep=token)
+    name = str(data.get("name") or "").strip()
+    if not name or len(name) > 120:
+        return jsonify(error="Enter an exercise name."), 400
+    source = video_cache_path(token, ".mp4")
+    metadata_path = video_cache_path(token, ".json")
+    if not os.path.isfile(source) or not os.path.isfile(metadata_path):
+        return jsonify(error="The video preview expired. Load the video again."), 400
+    try:
+        with open(metadata_path, encoding="utf-8") as metadata:
+            info = json.load(metadata)
+        duration = float(info["duration"])
+        fps = max(1.0, float(info.get("fps") or 30.0))
+        start, end = float(data.get("start", "nan")), float(data.get("end", "nan"))
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return jsonify(error="Choose valid start and end points."), 400
+    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15.001:
+        return jsonify(error="Choose a clip up to 15 seconds long within the video."), 400
+    if end - start < max(MIN_GIF_SECONDS, 3 / fps):
+        return jsonify(error="The clip is too short. Drag the sliders further apart and try again."), 400
+    try:
+        crop_filter = normalized_crop(data.get("crop"))
+    except ValueError:
+        return jsonify(error="Choose a valid crop area."), 400
+    output = video_cache_path(token, f"-clip-{uuid.uuid4().hex}.gif")
+    video_chain = "fps=12,scale=480:-2:flags=lanczos"
+    if crop_filter:
+        video_chain = crop_filter + "," + video_chain
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-ss", f"{start:.4f}", "-i", source, "-t", f"{end-start:.4f}",
+            "-filter_complex",
+            f"[0:v]{video_chain},split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
+            "-an", "-loop", "0", output,
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        try:
+            os.remove(output)
+        except OSError:
+            pass
+        return jsonify(error="GIF creation failed. Try a shorter section of the video."), 422
+    cid, created = category_from_form(data)
+    cat_name = category_name(cid)
+    folder = category_folder(cat_name)
+    os.makedirs(folder, exist_ok=True)
+    filename = unique_name(sanitize(name), ".gif", folder=folder)
+    target = os.path.join(folder, filename)
+    os.replace(output, target)
+    new_id = db().execute("insert into exercises(name,gif,category_id) values(?,?,?)",
+                          (name, rel_upload_path(target), cid)).lastrowid
+    db().commit()
+    # Keep the cached video and metadata so more GIFs can be cut from the same
+    # preview. They are removed by the regular one-hour cache cleanup.
+    now = time.time()
+    for path in (source, metadata_path):
+        try:
+            os.utime(path, (now, now))
+        except OSError:
+            pass
+    return jsonify(exercise_json(new_id))
+
+
+# ---------- Instagram URLs ----------
 @app.post("/api/instagram/preview")
 def instagram_preview():
     clean_video_cache()
@@ -374,72 +536,23 @@ def instagram_preview():
             raise RuntimeError("Download produced no video file")
         video_sources = [s for s in sources if s.lower().endswith((".mp4", ".mov", ".m4v", ".webm", ".mkv"))]
         source = video_sources[0] if video_sources else sources[0]
-        probed_duration, probed_fps = probe_video(source)
-        duration = probed_duration or known_duration
-        fps = (float(media_info.get("fps") or 0) if media_info else 0.0) or probed_fps or 30.0
-        if duration and (duration < 1 or duration > 180):
+        known_fps = float(media_info.get("fps") or 0) if media_info else 0.0
+        try:
+            duration, fps = prepare_video(source, token, known_duration, known_fps)
+        except ValueError as exc:
             for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
                 try:
                     os.remove(path)
                 except OSError:
                     pass
-            return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
-        preview = video_cache_path(token, ".mp4")
-        # Instagram nearly always serves H.264 MP4. Remuxing such a source takes
-        # a moment instead of minutes, which keeps long clips inside gunicorn
-        # and reverse-proxy request timeouts. Re-encode only when necessary.
-        converted = False
-        if browser_ready(source):
-            try:
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", source, "-map", "0:v:0", "-c", "copy",
-                    "-an", "-movflags", "+faststart", preview,
-                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   timeout=180)
-                converted = os.path.exists(preview) and os.path.getsize(preview) > 0
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                converted = False
-            if not converted and os.path.exists(preview):
-                os.remove(preview)
-        if not converted:
-            # A 70-second clip does not need full resolution; smaller frames keep
-            # the conversion quick enough on modest hardware.
-            length = duration or known_duration
-            scale = 540 if length > 45 else 720
-            try:
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", source, "-vf", f"scale={scale}:-2:flags=lanczos",
-                    "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", preview,
-                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   timeout=min(600, 60 + int(length or 0) * 6))
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                # Last resort: keep the original bitstream, even if it is large.
-                if os.path.exists(preview):
-                    os.remove(preview)
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", source, "-c", "copy", "-an", "-movflags", "+faststart", preview,
-                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
-        if not duration or duration < 1:
-            duration, preview_fps = probe_video(preview)
-            if preview_fps:
-                fps = preview_fps
-        if not duration or duration < 1 or duration > 180:
-            for path in glob.glob(os.path.join(VIDEO_CACHE, token + "*")):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-            return jsonify(error="The Instagram video must be between 1 second and 3 minutes long."), 400
-        with open(video_cache_path(token, ".json"), "w", encoding="utf-8") as metadata:
-            json.dump({"duration": duration, "fps": fps}, metadata)
+            return jsonify(error=str(exc)), 400
         for s in sources:
             try:
                 os.remove(s)
             except OSError:
                 pass
         return jsonify(token=token, duration=duration, fps=fps,
-                       video_url=f"/api/instagram/video/{token}")
+                       video_url=f"/api/videos/{token}")
     except ModuleNotFoundError as exc:
         if exc.name in ("yt_dlp", "yt_dip"):
             return jsonify(error="yt-dlp is missing. Run 'pip install yt-dlp' in your environment or rebuild the container, then retry."), 503
@@ -460,85 +573,6 @@ def instagram_preview():
         return jsonify(error=f"Could not load this Instagram video: {detail}. Check that the post is public and try again."), 422
 
 
-@app.get("/api/instagram/video/<token>")
-def exercise_video_preview(token):
-    return send_from_directory(VIDEO_CACHE, os.path.basename(video_cache_path(token, ".mp4")),
-                               mimetype="video/mp4", max_age=0)
-
-
-@app.post("/api/instagram/release")
-def release_instagram_video():
-    """Called by the page when it is left, so preview files do not linger."""
-    release_video_cache(str((request.get_json(silent=True) or {}).get("token") or ""))
-    return "", 204
-
-
-@app.post("/api/instagram/save")
-def save_instagram_gif():
-    data = request.get_json(silent=True) or {}
-    token = str(data.get("token") or "")
-    clean_video_cache(keep=token)
-    name = str(data.get("name") or "").strip()
-    if not name or len(name) > 120:
-        return jsonify(error="Enter an exercise name."), 400
-    source = video_cache_path(token, ".mp4")
-    metadata_path = video_cache_path(token, ".json")
-    if not os.path.isfile(source) or not os.path.isfile(metadata_path):
-        return jsonify(error="The video preview expired. Load the Instagram URL again."), 400
-    try:
-        with open(metadata_path, encoding="utf-8") as metadata:
-            info = json.load(metadata)
-        duration = float(info["duration"])
-        fps = max(1.0, float(info.get("fps") or 30.0))
-        start, end = float(data.get("start", "nan")), float(data.get("end", "nan"))
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-        return jsonify(error="Choose valid start and end points."), 400
-    if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start or end > duration + 0.05 or end - start > 15.001:
-        return jsonify(error="Choose a clip up to 15 seconds long within the video."), 400
-    if end - start < max(MIN_GIF_SECONDS, 3 / fps):
-        return jsonify(error="The clip is too short. Drag the sliders further apart and try again."), 400
-    try:
-        crop_filter = normalized_crop(data.get("crop"))
-    except ValueError:
-        return jsonify(error="Choose a valid crop area."), 400
-    output = video_cache_path(token, f"-clip-{uuid.uuid4().hex}.gif")
-    video_chain = "fps=12,scale=480:-2:flags=lanczos"
-    if crop_filter:
-        video_chain = crop_filter + "," + video_chain
-    try:
-        subprocess.run([
-            "ffmpeg", "-y", "-ss", f"{start:.4f}", "-i", source, "-t", f"{end-start:.4f}",
-            "-filter_complex",
-            f"[0:v]{video_chain},split[main][pal];[pal]palettegen=max_colors=128[palette];[main][palette]paletteuse=dither=bayer",
-            "-an", "-loop", "0", output,
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        try:
-            os.remove(output)
-        except OSError:
-            pass
-        return jsonify(error="GIF creation failed. Try a shorter section of the video."), 422
-    cid, created = category_from_form(data)
-    cat_name = category_name(cid)
-    folder = category_folder(cat_name)
-    os.makedirs(folder, exist_ok=True)
-    filename = unique_name(sanitize(name), ".gif", folder=folder)
-    target = os.path.join(folder, filename)
-    os.replace(output, target)
-    new_id = db().execute("insert into exercises(name,gif,category_id) values(?,?,?)",
-                          (name, rel_upload_path(target), cid)).lastrowid
-    db().commit()
-    # Keep the cached video and metadata so more GIFs can be cut from the same
-    # preview. They are removed by the regular one-hour cache cleanup.
-    now = time.time()
-    for path in (source, metadata_path):
-        try:
-            os.utime(path, (now, now))
-        except OSError:
-            pass
-    return jsonify(exercise_json(new_id))
-
-
 @app.errorhandler(400)
 @app.errorhandler(404)
 def api_errors(e):
@@ -546,6 +580,13 @@ def api_errors(e):
     if request.path.startswith("/api/"):
         msg = "Check the values and try again." if e.code == 400 else "Not found."
         return jsonify(error=msg), e.code
+    return e
+
+
+@app.errorhandler(413)
+def upload_too_large(e):
+    if request.path.startswith("/api/"):
+        return jsonify(error="The video is too large. Choose a file under 300 MB."), 413
     return e
 
 
@@ -718,8 +759,8 @@ def api_add_exercise():
     if not name:
         return jsonify(error="Enter an exercise name."), 400
     cid, _ = category_from_form(request.form)
-    gif = save_gif(request.files.get("gif"), name, category_name(cid))
-    eid = db().execute("insert into exercises(name,gif,category_id) values(?,?,?)", (name, gif, cid)).lastrowid
+    eid = db().execute("insert into exercises(name,gif,category_id) values(?,?,?)",
+                       (name, None, cid)).lastrowid
     db().commit()
     return jsonify(exercise_json(eid)), 201
 

@@ -1,4 +1,4 @@
-import type { CalendarData, Category, Crop, Exercise, GifInfo, IgPreview, Program, ProgramDetail } from '../types';
+import type { CalendarData, Category, Crop, Exercise, GifInfo, Program, ProgramDetail, VideoPreview } from '../types';
 
 async function req<T>(url: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(url, { credentials: 'same-origin', ...init });
@@ -57,10 +57,15 @@ export const api = {
   trimExercise: (id: number, start: number, end: number) =>
     req<Exercise>(`/api/exercises/${id}/trim`, json('POST', { start, end })),
 
-  igPreview: (url: string) => req<IgPreview>('/api/instagram/preview', json('POST', { url })),
-  igSave: (body: { token: string; start: number; end: number; name: string; category: string; new_category?: string; crop?: Crop | null }) =>
-    req<Exercise>('/api/instagram/save', json('POST', body)),
-  igRelease: (token: string) => navigator.sendBeacon('/api/instagram/release', new Blob([JSON.stringify({ token })], { type: 'application/json' })),
+  instagramPreview: (url: string) => req<VideoPreview>('/api/instagram/preview', json('POST', { url })),
+  uploadVideo: (file: File) => {
+    const fd = new FormData();
+    fd.set('video', file);
+    return req<VideoPreview>('/api/videos', { method: 'POST', body: fd });
+  },
+  saveVideoGif: (body: { token: string; start: number; end: number; name: string; category: string; new_category?: string; crop?: Crop | null }) =>
+    req<Exercise>('/api/videos/save', json('POST', body)),
+  releaseVideo: (token: string) => navigator.sendBeacon('/api/videos/release', new Blob([JSON.stringify({ token })], { type: 'application/json' })),
 
   calendar: () => req<CalendarData>('/api/calendar'),
 };
