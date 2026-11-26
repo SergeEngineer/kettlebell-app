@@ -1,0 +1,1 @@
+Exercises > Select GIF > Trim GIF - I need to see the frame when I move start and end toggles. Instead it just playing the gif which not helpfull
